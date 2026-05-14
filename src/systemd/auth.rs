@@ -1,5 +1,7 @@
 use std::{
-    io::{self, Write},
+    fs,
+    io::{Error, Result, Write},
+    process,
     sync::Arc,
     sync::atomic::AtomicBool,
     thread,
@@ -28,7 +30,7 @@ impl EmbeddedAuthPane {
         cols: u16,
         rows: u16,
         internal_tx: mpsc::Sender<AppInternalEvent>,
-    ) -> io::Result<Self> {
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -39,7 +41,7 @@ impl EmbeddedAuthPane {
             })
             .map_err(pty_to_io_error)?;
 
-        let pid = std::process::id();
+        let pid = process::id();
         let start_time = current_process_start_time()?;
         let mut cmd = CommandBuilder::new("pkttyagent");
         cmd.arg("--process");
@@ -76,7 +78,7 @@ impl EmbeddedAuthPane {
         })
     }
 
-    pub fn send_key(&mut self, key: KeyEvent) -> io::Result<()> {
+    pub fn send_key(&mut self, key: KeyEvent) -> Result<()> {
         if let Some(bytes) = key_to_bytes(key) {
             self.writer.write_all(&bytes)?;
             self.writer.flush()?;
@@ -84,7 +86,7 @@ impl EmbeddedAuthPane {
         Ok(())
     }
 
-    pub fn resize(&mut self, cols: u16, rows: u16) -> io::Result<()> {
+    pub fn resize(&mut self, cols: u16, rows: u16) -> Result<()> {
         self.master
             .resize(PtySize {
                 cols,
@@ -101,21 +103,21 @@ impl EmbeddedAuthPane {
     }
 }
 
-fn current_process_start_time() -> io::Result<u64> {
-    let stat = std::fs::read_to_string("/proc/self/stat")?;
+fn current_process_start_time() -> Result<u64> {
+    let stat = fs::read_to_string("/proc/self/stat")?;
     let (_prefix, rest) = stat
         .rsplit_once(") ")
-        .ok_or_else(|| io::Error::other("proc parse error"))?;
+        .ok_or_else(|| Error::other("proc parse error"))?;
     let fields: Vec<&str> = rest.split_whitespace().collect();
     fields
         .get(19)
-        .ok_or_else(|| io::Error::other("stat field missing"))?
+        .ok_or_else(|| Error::other("stat field missing"))?
         .parse::<u64>()
-        .map_err(|e| io::Error::other(e.to_string()))
+        .map_err(|e| Error::other(e.to_string()))
 }
 
-fn pty_to_io_error(err: impl std::fmt::Display) -> io::Error {
-    io::Error::other(err.to_string())
+fn pty_to_io_error(err: impl std::fmt::Display) -> Error {
+    Error::other(err.to_string())
 }
 
 fn normalize_pty_output(bytes: &[u8]) -> String {

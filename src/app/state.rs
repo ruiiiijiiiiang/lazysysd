@@ -1,6 +1,7 @@
 use std::{
-    collections::VecDeque,
-    io,
+    collections::{HashSet, VecDeque},
+    io::{Read, Result, Write},
+    process::{Command, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -19,7 +20,8 @@ use crate::{
     models::{AppInternalEvent, PendingAction, UnitInfo},
     systemd::{
         auth::{EmbeddedAuthFlow, EmbeddedAuthPane},
-        dbus::{fetch_all_units, perform_unit_action},
+        dbus::{fetch_all_units, get_unit_fragment_path, perform_unit_action},
+        journal::JournalManager,
     },
 };
 
@@ -54,6 +56,9 @@ pub struct App {
 
     pub matcher: SkimMatcherV2,
     pub is_loading: bool,
+
+    pub visual_select: bool,
+    pub selected_log_lines: HashSet<usize>,
 }
 
 impl App {
@@ -77,6 +82,8 @@ impl App {
             internal_tx,
             matcher: SkimMatcherV2::default(),
             is_loading: true,
+            visual_select: false,
+            selected_log_lines: HashSet::new(),
         };
 
         app.push_log("lazysysd started");
@@ -107,7 +114,6 @@ impl App {
         self.is_loading = true;
         let tx = self.internal_tx.clone();
         tokio::spawn(async move {
-            use crate::systemd::journal::JournalManager;
             let manager = JournalManager::new();
             match manager.fetch_logs(&unit_name, 100).await {
                 Ok(logs) => {
@@ -126,7 +132,6 @@ impl App {
         self.is_loading = true;
         let tx = self.internal_tx.clone();
         tokio::spawn(async move {
-            use crate::systemd::dbus::get_unit_fragment_path;
             match get_unit_fragment_path(&unit.path).await {
                 Ok(path) => {
                     if path.is_empty() || path == "/dev/null" {
@@ -192,7 +197,7 @@ impl App {
         }
     }
 
-    pub async fn handle_key(&mut self, key: KeyEvent) -> io::Result<bool> {
+    pub async fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
         // Modal priority
         if self.embedded_auth.is_some() {
             if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
@@ -211,9 +216,57 @@ impl App {
         }
 
         if self.view_mode == ViewMode::LogView {
+            if self.visual_select {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.visual_select = false;
+                        self.selected_log_lines.clear();
+                    }
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        self.move_log_selection(1);
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        self.move_log_selection(-1);
+                    }
+                    KeyCode::Char(' ') => {
+                        if let Some(i) = self.log_state.selected()
+                            && !self.selected_log_lines.remove(&i)
+                        {
+                            self.selected_log_lines.insert(i);
+                        }
+                    }
+                    KeyCode::Char('y') | KeyCode::Enter => {
+                        let mut indices: Vec<_> = self.selected_log_lines.iter().collect();
+                        indices.sort();
+                        let selected: Vec<&String> = indices
+                            .into_iter()
+                            .filter_map(|&i| self.unit_logs.get(i))
+                            .collect();
+                        if !selected.is_empty() {
+                            let text = selected
+                                .into_iter()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let cloned = text.clone();
+                            let msg = tokio::task::spawn_blocking(move || copy_to_clipboard(&cloned))
+                                .await
+                                .unwrap_or_else(|e| format!("Clipboard task panic: {e}"));
+                            self.push_log(msg);
+                        }
+                        self.visual_select = false;
+                        self.selected_log_lines.clear();
+                    }
+                    _ => {}
+                }
+                return Ok(false);
+            }
+
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => {
                     self.view_mode = ViewMode::UnitList;
+                    self.visual_select = false;
+                    self.selected_log_lines.clear();
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.move_log_selection(1);
@@ -233,6 +286,13 @@ impl App {
                 KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     self.move_log_selection(-(self.last_area_height as i32));
                 }
+                KeyCode::Char('v') if !self.unit_logs.is_empty() => {
+                    self.visual_select = true;
+                    if self.log_state.selected().is_none() {
+                        self.log_state.select(Some(0));
+                    }
+                }
+                KeyCode::Char('v') => {}
                 KeyCode::Char('r') => {
                     if let Some(unit) = self.get_selected_unit() {
                         let name = unit.name.clone();
@@ -295,6 +355,22 @@ impl App {
                 self.move_selection(-1);
                 Ok(false)
             }
+            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_selection(self.last_area_height as i32 / 2);
+                Ok(false)
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_selection(-(self.last_area_height as i32 / 2));
+                Ok(false)
+            }
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_selection(self.last_area_height as i32);
+                Ok(false)
+            }
+            KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.move_selection(-(self.last_area_height as i32));
+                Ok(false)
+            }
             KeyCode::Char('/') => {
                 self.is_searching = true;
                 Ok(false)
@@ -309,6 +385,8 @@ impl App {
                     self.view_mode = ViewMode::LogView;
                     self.unit_logs.clear();
                     self.log_state.select(None);
+                    self.visual_select = false;
+                    self.selected_log_lines.clear();
                     self.fetch_unit_logs(name).await;
                 }
                 Ok(false)
@@ -396,7 +474,7 @@ impl App {
         action: &str,
         cols: u16,
         rows: u16,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         if self.embedded_auth.is_some() {
             return Ok(());
         }
@@ -434,7 +512,7 @@ impl App {
         }
     }
 
-    pub fn resize_embedded_auth(&mut self, cols: u16, rows: u16) -> io::Result<()> {
+    pub fn resize_embedded_auth(&mut self, cols: u16, rows: u16) -> Result<()> {
         if let Some(flow) = self.embedded_auth.as_mut() {
             flow.pane.resize(cols, rows)?;
         }
@@ -488,4 +566,51 @@ impl App {
         }
         self.logs.push_back(entry.into());
     }
+}
+
+fn copy_to_clipboard(text: &str) -> String {
+    let candidates: [(&str, &[&str]); 3] = [
+        ("wl-copy", &[]),
+        ("xclip", &["-selection", "clipboard"]),
+        ("pbcopy", &[]),
+    ];
+    for (cmd, args) in candidates {
+        let mut child = match Command::new(cmd)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+
+        match child.wait() {
+            Ok(status) if status.success() => {
+                return format!("Copied {} chars to clipboard via {}", text.len(), cmd);
+            }
+            Ok(_) => {
+                let err = child
+                    .stderr
+                    .take()
+                    .and_then(|mut s| {
+                        let mut buf = String::new();
+                        s.read_to_string(&mut buf).ok().map(|_| buf)
+                    })
+                    .unwrap_or_default();
+                if !err.is_empty() {
+                    return format!("Clipboard failed: {} (stderr: {})", cmd, err.trim());
+                }
+            }
+            Err(e) => {
+                return format!("Clipboard failed: {} (wait error: {})", cmd, e);
+            }
+        }
+    }
+    "Clipboard failed: no clipboard tool found".to_string()
 }

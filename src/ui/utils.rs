@@ -1,4 +1,4 @@
-use std::io::{self, Stdout};
+use std::io::{Result, Stdout, stdout};
 
 use crossterm::{
     execute,
@@ -12,9 +12,9 @@ pub struct Tui {
 }
 
 impl Tui {
-    pub fn enter() -> io::Result<Self> {
+    pub fn enter() -> Result<Self> {
         enable_raw_mode()?;
-        let mut stdout = io::stdout();
+        let mut stdout = stdout();
         execute!(stdout, EnterAlternateScreen)?;
         let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
         terminal.hide_cursor()?;
@@ -25,7 +25,7 @@ impl Tui {
         })
     }
 
-    pub fn exit(&mut self) -> io::Result<()> {
+    pub fn exit(&mut self) -> Result<()> {
         if self.active {
             execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
             disable_raw_mode()?;
@@ -35,7 +35,7 @@ impl Tui {
         Ok(())
     }
 
-    pub fn resume(&mut self) -> io::Result<()> {
+    pub fn resume(&mut self) -> Result<()> {
         if !self.active {
             enable_raw_mode()?;
             execute!(self.terminal.backend_mut(), EnterAlternateScreen)?;

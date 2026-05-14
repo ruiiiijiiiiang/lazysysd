@@ -1,7 +1,11 @@
+use std::io::{Error, Result};
+
 use serde::Deserialize;
-use std::io;
-use zbus::zvariant::Type;
-use zbus::{proxy, zvariant::OwnedObjectPath};
+use zbus::{
+    Connection, Error as ZbusError, Result as ZbusResult,
+    zvariant::Type,
+    {proxy, zvariant::OwnedObjectPath},
+};
 
 use crate::models::{AttemptResult, UnitInfo};
 
@@ -14,8 +18,8 @@ pub struct UnitRow {
     pub load_state: String,
     pub active_state: String,
     pub sub_state: String,
-    pub path: OwnedObjectPath,
     pub _following: String,
+    pub path: OwnedObjectPath,
     pub _job_id: u32,
     pub _job_type: String,
     pub _job_path: OwnedObjectPath,
@@ -27,17 +31,17 @@ pub struct UnitRow {
     default_path = "/org/freedesktop/systemd1"
 )]
 trait SystemdManager {
-    fn list_units(&self) -> zbus::Result<Vec<UnitRow>>;
-    fn load_unit(&self, name: &str) -> zbus::Result<OwnedObjectPath>;
+    fn list_units(&self) -> ZbusResult<Vec<UnitRow>>;
+    fn load_unit(&self, name: &str) -> ZbusResult<OwnedObjectPath>;
 
     #[zbus(allow_interactive_auth)]
-    fn restart_unit(&self, name: &str, mode: &str) -> zbus::Result<OwnedObjectPath>;
+    fn restart_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
 
     #[zbus(allow_interactive_auth)]
-    fn stop_unit(&self, name: &str, mode: &str) -> zbus::Result<OwnedObjectPath>;
+    fn stop_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
 
     #[zbus(allow_interactive_auth)]
-    fn start_unit(&self, name: &str, mode: &str) -> zbus::Result<OwnedObjectPath>;
+    fn start_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
 }
 
 #[proxy(
@@ -46,47 +50,47 @@ trait SystemdManager {
 )]
 trait SystemdUnit {
     #[zbus(property)]
-    fn id(&self) -> zbus::Result<String>;
+    fn id(&self) -> ZbusResult<String>;
     #[zbus(property)]
-    fn description(&self) -> zbus::Result<String>;
+    fn description(&self) -> ZbusResult<String>;
     #[zbus(property)]
-    fn load_state(&self) -> zbus::Result<String>;
+    fn load_state(&self) -> ZbusResult<String>;
     #[zbus(property)]
-    fn active_state(&self) -> zbus::Result<String>;
+    fn active_state(&self) -> ZbusResult<String>;
     #[zbus(property)]
-    fn sub_state(&self) -> zbus::Result<String>;
+    fn sub_state(&self) -> ZbusResult<String>;
     #[zbus(property)]
-    fn fragment_path(&self) -> zbus::Result<String>;
+    fn fragment_path(&self) -> ZbusResult<String>;
 }
 
-pub async fn get_unit_fragment_path(unit_path: &OwnedObjectPath) -> io::Result<String> {
-    let connection = zbus::Connection::system()
+pub async fn get_unit_fragment_path(unit_path: &OwnedObjectPath) -> Result<String> {
+    let connection = Connection::system()
         .await
-        .map_err(|e| io::Error::other(format!("D-Bus connect failed: {e}")))?;
+        .map_err(|e| Error::other(format!("D-Bus connect failed: {e}")))?;
     let unit = SystemdUnitProxy::builder(&connection)
         .path(unit_path.clone())
-        .map_err(|e| io::Error::other(format!("Proxy builder failed: {e}")))?
+        .map_err(|e| Error::other(format!("Proxy builder failed: {e}")))?
         .build()
         .await
-        .map_err(|e| io::Error::other(format!("Proxy build failed: {e}")))?;
+        .map_err(|e| Error::other(format!("Proxy build failed: {e}")))?;
 
     unit.fragment_path()
         .await
-        .map_err(|e| io::Error::other(format!("Failed to get FragmentPath: {e}")))
+        .map_err(|e| Error::other(format!("Failed to get FragmentPath: {e}")))
 }
 
-pub async fn fetch_all_units() -> io::Result<Vec<UnitInfo>> {
-    let connection = zbus::Connection::system()
+pub async fn fetch_all_units() -> Result<Vec<UnitInfo>> {
+    let connection = Connection::system()
         .await
-        .map_err(|e| io::Error::other(format!("D-Bus connect failed: {e}")))?;
+        .map_err(|e| Error::other(format!("D-Bus connect failed: {e}")))?;
     let manager = SystemdManagerProxy::new(&connection)
         .await
-        .map_err(|e| io::Error::other(format!("Proxy create failed: {e}")))?;
+        .map_err(|e| Error::other(format!("Proxy create failed: {e}")))?;
 
     let units_raw = manager
         .list_units()
         .await
-        .map_err(|e| io::Error::other(format!("list_units failed: {e}")))?;
+        .map_err(|e| Error::other(format!("list_units failed: {e}")))?;
 
     Ok(units_raw
         .into_iter()
@@ -112,19 +116,19 @@ pub async fn perform_unit_action(name: &str, action: &str) -> AttemptResult {
     }
 }
 
-async fn perform_unit_action_inner(name: &str, action: &str) -> io::Result<AttemptResult> {
-    let connection = zbus::Connection::system()
+async fn perform_unit_action_inner(name: &str, action: &str) -> Result<AttemptResult> {
+    let connection = Connection::system()
         .await
-        .map_err(|e| io::Error::other(e.to_string()))?;
+        .map_err(|e| Error::other(e.to_string()))?;
     let manager = SystemdManagerProxy::new(&connection)
         .await
-        .map_err(|e| io::Error::other(e.to_string()))?;
+        .map_err(|e| Error::other(e.to_string()))?;
 
     let result = match action {
         "restart" => manager.restart_unit(name, JOB_MODE).await,
         "stop" => manager.stop_unit(name, JOB_MODE).await,
         "start" => manager.start_unit(name, JOB_MODE).await,
-        _ => return Err(io::Error::other("Unknown action")),
+        _ => return Err(Error::other("Unknown action")),
     };
 
     match result {
@@ -137,7 +141,7 @@ async fn perform_unit_action_inner(name: &str, action: &str) -> io::Result<Attem
     }
 }
 
-fn classify_systemd_error(err: zbus::Error, target: &str) -> AttemptResult {
+fn classify_systemd_error(err: ZbusError, target: &str) -> AttemptResult {
     let detail = err.to_string();
     let lower = detail.to_ascii_lowercase();
     let headline = if lower.contains("accessdenied") || lower.contains("not authorized") {

@@ -1,4 +1,7 @@
-use std::{io, process::Command};
+use std::{
+    io::{Error, Result},
+    process::Command,
+};
 
 use tailspin::Highlighter;
 
@@ -13,7 +16,7 @@ impl JournalManager {
         }
     }
 
-    pub async fn fetch_logs(&self, unit_name: &str, limit: usize) -> io::Result<Vec<String>> {
+    pub async fn fetch_logs(&self, unit_name: &str, limit: usize) -> Result<Vec<String>> {
         let output = Command::new("journalctl")
             .arg("-u")
             .arg(unit_name)
@@ -23,7 +26,7 @@ impl JournalManager {
             .output()?;
 
         if !output.status.success() {
-            return Err(io::Error::other(format!(
+            return Err(Error::other(format!(
                 "journalctl failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));

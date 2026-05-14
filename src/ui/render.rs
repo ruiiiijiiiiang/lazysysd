@@ -93,7 +93,22 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Line::from(" r  : Refresh  "),
             Line::from(" q  : Quit     "),
         ],
-        ViewMode::LogView => vec![Line::from(" Esc/q: Back   "), Line::from(" r    : Refresh")],
+        ViewMode::LogView => {
+            if app.visual_select {
+                vec![
+                    Line::from(" Esc : Cancel  "),
+                    Line::from(" j/k : Navigate "),
+                    Line::from(" Space: Toggle  "),
+                    Line::from(" y/Enter: Yank  "),
+                ]
+            } else {
+                vec![
+                    Line::from(" Esc/q: Back   "),
+                    Line::from(" r    : Refresh"),
+                    Line::from(" v    : Select  "),
+                ]
+            }
+        }
         ViewMode::FileView => vec![Line::from(" Esc/q: Back   "), Line::from(" e    : Edit   ")],
     };
     frame.render_widget(
@@ -108,6 +123,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
+    app.last_area_height = area.height.saturating_sub(2);
     let list_block = Block::default().borders(Borders::ALL).title(format!(
         " Units ({}/{}) ",
         app.filtered_units.len(),
@@ -193,14 +209,30 @@ fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
         let items: Vec<ListItem> = app
             .unit_logs
             .iter()
-            .map(|line| {
+            .enumerate()
+            .map(|(i, line)| {
+                let marker = if app.visual_select {
+                    if app.selected_log_lines.contains(&i) {
+                        Span::styled("[X] ", Style::default().fg(Color::Green))
+                    } else {
+                        Span::raw("[ ] ")
+                    }
+                } else {
+                    Span::raw("")
+                };
+
                 match line.as_bytes().into_text() {
                     Ok(t) => {
                         let mut l = t.lines.into_iter().next().unwrap_or_else(|| Line::from(""));
-                        l.style = Style::default(); // Ensure clean style for list items if needed
+                        l.style = Style::default();
+                        l.spans.insert(0, marker);
                         ListItem::new(l)
                     }
-                    Err(_) => ListItem::new(line.as_str()),
+                    Err(_) => {
+                        let mut l = Line::from(line.as_str());
+                        l.spans.insert(0, marker);
+                        ListItem::new(l)
+                    }
                 }
             })
             .collect();

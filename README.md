@@ -16,22 +16,25 @@
 ### Global
 
 - `q`: Quit application
-- `r`: Refresh unit list or current view
 - `Esc`: Return to unit list / Cancel authentication
 
 ### Unit List
 
 - `j` / `k`: Navigate up/down
 - `/`: Enter fuzzy search mode
+- `a` / `n` / `o`: Open active, enablement, and load filters
+- `s` / `t` / `r` / `R`: Start, stop, restart, or reload the selected unit
+- `e` / `d` / `m` / `u`: Enable, disable, mask, or unmask the selected unit
+- `g`: Refresh unit list immediately
 - `Enter` / `l`: View unit logs
 - `v`: View unit file
-- `a`: Restart unit (triggers authentication modal if needed)
 
 ### Log / File Viewer
 
 - `j` / `k`: Scroll one line
 - `Ctrl+u` / `Ctrl+d`: Scroll half-page up/down
 - `Ctrl+b` / `Ctrl+f`: Scroll full-page up/down
+- `r` (Log View only): Refresh logs
 - `e` (File View only): Edit file in `$EDITOR`
 
 ## Technical Stack

@@ -103,6 +103,16 @@ impl EmbeddedAuthPane {
     }
 }
 
+fn pty_to_io_error(err: impl std::fmt::Display) -> Error {
+    Error::other(err.to_string())
+}
+
+fn normalize_pty_output(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+}
+
 fn current_process_start_time() -> Result<u64> {
     let stat = fs::read_to_string("/proc/self/stat")?;
     let (_prefix, rest) = stat
@@ -114,16 +124,6 @@ fn current_process_start_time() -> Result<u64> {
         .ok_or_else(|| Error::other("stat field missing"))?
         .parse::<u64>()
         .map_err(|e| Error::other(e.to_string()))
-}
-
-fn pty_to_io_error(err: impl std::fmt::Display) -> Error {
-    Error::other(err.to_string())
-}
-
-fn normalize_pty_output(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes)
-        .replace("\r\n", "\n")
-        .replace('\r', "\n")
 }
 
 fn key_to_bytes(key: KeyEvent) -> Option<Vec<u8>> {

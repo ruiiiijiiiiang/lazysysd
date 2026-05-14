@@ -6,8 +6,11 @@ mod ui;
 use std::{
     env,
     ffi::OsStr,
+    fs,
     io::{Error, Result},
+    path::PathBuf,
     process::{Command, ExitCode},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crossterm::event::{Event, EventStream, KeyEventKind};
@@ -19,7 +22,7 @@ use tokio::{
 
 use crate::{
     app::state::App,
-    models::PendingAction::EditFile,
+    models::{EditRequest, PendingAction::EditFile, UnitEditMode},
     ui::{render::draw, utils::Tui},
 };
 
@@ -77,17 +80,12 @@ async fn run_app() -> Result<()> {
                 Some(Ok(Event::Resize(c, r))) => app.resize_embedded_auth(c, r)?,
                 Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press
                     && app.handle_key(key).await? => {
-                        if let Some(EditFile(path)) = app.pending_action.take() {
+                        if let Some(EditFile(request)) = app.pending_action.take() {
                             tui.exit()?;
-                            let editor = resolve_editor()?;
-                            let mut child = Command::new("sh")
-                                .arg("-c")
-                                .arg(format!("{} \"$0\"", editor))
-                                .arg(path)
-                                .spawn()
-                                .map_err(|e| Error::other(format!("Failed to start editor: {e}")))?;
-                            child.wait()?;
+                            let result = run_editor_request(request);
                             tui.resume()?;
+                            let (request, edited_content) = result?;
+                            app.finish_edit_request(request, edited_content);
                             continue;
 
                         }
@@ -112,4 +110,49 @@ async fn run_app() -> Result<()> {
     }
 
     tui.exit()
+}
+
+fn run_editor_request(request: EditRequest) -> Result<(EditRequest, String)> {
+    let editor = resolve_editor()?;
+    let temp_path = create_temp_edit_path(&request.unit_name, request.mode);
+    fs::write(&temp_path, &request.initial_content)
+        .map_err(|e| Error::other(format!("Failed to prepare edit draft: {e}")))?;
+
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(format!("{} \"$0\"", editor))
+        .arg(&temp_path)
+        .status()
+        .map_err(|e| Error::other(format!("Failed to start editor: {e}")))?;
+
+    let edited_content = fs::read_to_string(&temp_path)
+        .map_err(|e| Error::other(format!("Failed to read edited draft: {e}")))?;
+    let _ = fs::remove_file(&temp_path);
+
+    if !status.success() && edited_content == request.initial_content {
+        let initial_content = request.initial_content.clone();
+        return Ok((request, initial_content));
+    }
+
+    Ok((request, edited_content))
+}
+
+fn create_temp_edit_path(unit_name: &str, mode: UnitEditMode) -> PathBuf {
+    let mut sanitized_name = unit_name.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+    if sanitized_name.is_empty() {
+        sanitized_name = "unit".to_string();
+    }
+
+    let mode_label = match mode {
+        UnitEditMode::Override => "override",
+        UnitEditMode::Full => "full",
+    };
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+
+    env::temp_dir().join(format!(
+        "lazysysd-{sanitized_name}-{mode_label}-{unique}.conf"
+    ))
 }

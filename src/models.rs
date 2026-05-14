@@ -6,13 +6,66 @@ pub struct UnitInfo {
     pub description: String,
     pub load_state: String,
     pub active_state: String,
+    pub enablement_state: String,
     pub sub_state: String,
     pub path: OwnedObjectPath,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum UnitEditMode {
+    Override,
+    Full,
+}
+
+impl UnitEditMode {
+    pub fn action_label(self) -> &'static str {
+        match self {
+            Self::Override => "override",
+            Self::Full => "full replacement",
+        }
+    }
+
+    pub fn draft_label(self, unit_name: &str) -> String {
+        match self {
+            Self::Override => format!("Draft Override: {unit_name}"),
+            Self::Full => format!("Draft Replacement: {unit_name}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EditRequest {
+    pub unit_name: String,
+    pub mode: UnitEditMode,
+    pub initial_content: String,
+    pub restore_content: String,
+    pub restore_path: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EditReview {
+    pub unit_name: String,
+    pub mode: UnitEditMode,
+    pub edited_content: String,
+    pub restore_content: String,
+    pub restore_path: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum PrivilegedAction {
+    UnitCommand {
+        unit_name: String,
+        action: String,
+    },
+    ApplyEdit {
+        unit_name: String,
+        mode: UnitEditMode,
+        content: String,
+    },
+}
+
 pub struct AttemptResult {
-    pub headline: String,
-    pub detail: String,
+    pub success: bool,
     pub log_entry: String,
 }
 
@@ -27,5 +80,5 @@ pub enum AppInternalEvent {
 }
 
 pub enum PendingAction {
-    EditFile(String),
+    EditFile(EditRequest),
 }

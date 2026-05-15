@@ -16,14 +16,19 @@ impl JournalManager {
         }
     }
 
-    pub async fn fetch_logs(&self, unit_name: &str, limit: usize) -> Result<Vec<String>> {
-        let output = Command::new("journalctl")
+    pub async fn fetch_logs(&self, unit_name: &str, scope: &str, limit: usize) -> Result<Vec<String>> {
+        let mut command = Command::new("journalctl");
+        if scope == "session" {
+            command.arg("--user");
+        }
+        command
             .arg("-u")
             .arg(unit_name)
             .arg("-n")
             .arg(limit.to_string())
-            .arg("--no-pager")
-            .output()?;
+            .arg("--no-pager");
+
+        let output = command.output()?;
 
         if !output.status.success() {
             return Err(Error::other(format!(

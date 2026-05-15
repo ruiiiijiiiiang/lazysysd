@@ -4,6 +4,7 @@ use zbus::zvariant::OwnedObjectPath;
 pub struct UnitInfo {
     pub name: String,
     pub description: String,
+    pub scope: String,
     pub load_state: String,
     pub active_state: String,
     pub enablement_state: String,
@@ -36,6 +37,7 @@ impl UnitEditMode {
 #[derive(Debug, Clone)]
 pub struct EditRequest {
     pub unit_name: String,
+    pub scope: String,
     pub mode: UnitEditMode,
     pub initial_content: String,
     pub restore_content: String,
@@ -45,6 +47,7 @@ pub struct EditRequest {
 #[derive(Debug, Clone)]
 pub struct EditReview {
     pub unit_name: String,
+    pub scope: String,
     pub mode: UnitEditMode,
     pub edited_content: String,
     pub restore_content: String,
@@ -55,10 +58,12 @@ pub struct EditReview {
 pub enum PrivilegedAction {
     UnitCommand {
         unit_name: String,
+        scope: String,
         action: String,
     },
     ApplyEdit {
         unit_name: String,
+        scope: String,
         mode: UnitEditMode,
         content: String,
     },

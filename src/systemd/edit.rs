@@ -11,24 +11,35 @@ const DEFAULT_DROP_IN: &str = "override.conf";
 
 pub async fn perform_unit_edit(
     unit_name: &str,
+    scope: &str,
     mode: UnitEditMode,
     content: String,
 ) -> AttemptResult {
-    match perform_unit_edit_inner(unit_name, mode, content).await {
+    match perform_unit_edit_inner(unit_name, scope, mode, content).await {
         Ok(result) => result,
         Err(err) => AttemptResult {
             success: false,
-            log_entry: format!("{} for {} failed: {}", mode.action_label(), unit_name, err),
+            log_entry: format!(
+                "{} for {} ({}) failed: {}",
+                mode.action_label(),
+                unit_name,
+                scope,
+                err
+            ),
         },
     }
 }
 
 async fn perform_unit_edit_inner(
     unit_name: &str,
+    scope: &str,
     mode: UnitEditMode,
     content: String,
 ) -> Result<AttemptResult> {
     let mut command = Command::new("systemctl");
+    if scope == "session" {
+        command.arg("--user");
+    }
     command.arg("edit");
     match mode {
         UnitEditMode::Override => {

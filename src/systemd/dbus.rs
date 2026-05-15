@@ -5,7 +5,6 @@ use std::{
 };
 
 use serde::Deserialize;
-use tokio::task;
 use zbus::{
     Connection, Result as ZbusResult,
     zvariant::Type,
@@ -39,28 +38,40 @@ trait SystemdManager {
     fn load_unit(&self, name: &str) -> ZbusResult<OwnedObjectPath>;
     fn get_unit_file_state(&self, name: &str) -> ZbusResult<String>;
 
+    #[zbus(allow_interactive_auth)]
     fn start_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
+    #[zbus(allow_interactive_auth)]
     fn stop_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
+    #[zbus(allow_interactive_auth)]
     fn restart_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
+    #[zbus(allow_interactive_auth)]
     fn reload_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
+    #[zbus(allow_interactive_auth)]
     fn enable_unit_files(
         &self,
         files: Vec<String>,
         runtime: bool,
         force: bool,
     ) -> ZbusResult<(bool, Vec<(String, String, String)>)>;
+    #[zbus(allow_interactive_auth)]
     fn disable_unit_files(
         &self,
         files: Vec<String>,
         runtime: bool,
     ) -> ZbusResult<Vec<(String, String, String)>>;
+    #[zbus(allow_interactive_auth)]
     fn mask_unit_files(
         &self,
         files: Vec<String>,
         runtime: bool,
         force: bool,
     ) -> ZbusResult<Vec<(String, String, String)>>;
-    fn unmask_unit_files(&self, files: Vec<String>, runtime: bool) -> ZbusResult<Vec<(String, String, String)>>;
+    #[zbus(allow_interactive_auth)]
+    fn unmask_unit_files(
+        &self,
+        files: Vec<String>,
+        runtime: bool,
+    ) -> ZbusResult<Vec<(String, String, String)>>;
 }
 
 #[proxy(
@@ -82,10 +93,14 @@ trait SystemdUnit {
     fn fragment_path(&self) -> ZbusResult<String>;
 }
 
-pub async fn get_unit_fragment_path(unit_path: &OwnedObjectPath) -> Result<String> {
-    let connection = Connection::system()
-        .await
-        .map_err(|e| Error::other(format!("D-Bus connect failed: {e}")))?;
+pub async fn get_unit_fragment_path(unit_path: &OwnedObjectPath, scope: &str) -> Result<String> {
+    let connection = if scope == "session" {
+        Connection::session().await
+    } else {
+        Connection::system().await
+    }
+    .map_err(|e| Error::other(format!("D-Bus connect failed: {e}")))?;
+
     let unit = SystemdUnitProxy::builder(&connection)
         .path(unit_path.clone())
         .map_err(|e| Error::other(format!("Proxy builder failed: {e}")))?
@@ -99,9 +114,29 @@ pub async fn get_unit_fragment_path(unit_path: &OwnedObjectPath) -> Result<Strin
 }
 
 pub async fn fetch_all_units() -> Result<Vec<UnitInfo>> {
-    let connection = Connection::system()
-        .await
-        .map_err(|e| Error::other(format!("D-Bus connect failed: {e}")))?;
+    let mut all_units = Vec::new();
+
+    // Fetch system units
+    if let Ok(system_units) = fetch_units_from_scope("global").await {
+        all_units.extend(system_units);
+    }
+
+    // Fetch session units (might fail if no session bus)
+    if let Ok(session_units) = fetch_units_from_scope("session").await {
+        all_units.extend(session_units);
+    }
+
+    Ok(all_units)
+}
+
+async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
+    let connection = if scope == "session" {
+        Connection::session().await
+    } else {
+        Connection::system().await
+    }
+    .map_err(|e| Error::other(format!("D-Bus connect failed: {e}")))?;
+
     let manager = SystemdManagerProxy::new(&connection)
         .await
         .map_err(|e| Error::other(format!("Proxy create failed: {e}")))?;
@@ -123,6 +158,7 @@ pub async fn fetch_all_units() -> Result<Vec<UnitInfo>> {
         units.push(UnitInfo {
             name: u.name,
             description: u.description,
+            scope: scope.to_string(),
             load_state: u.load_state,
             active_state: u.active_state,
             enablement_state,
@@ -134,60 +170,69 @@ pub async fn fetch_all_units() -> Result<Vec<UnitInfo>> {
     Ok(units)
 }
 
-pub async fn perform_unit_action(name: &str, action: &str) -> AttemptResult {
-    match action {
-        "start" | "stop" | "restart" | "reload" | "enable" | "disable" | "mask" | "unmask" => {
-            run_systemctl_unit_action(name, action).await
-        }
-        _ => AttemptResult {
+pub async fn perform_unit_action(name: &str, scope: &str, action: &str) -> AttemptResult {
+    match run_dbus_unit_action(name, scope, action).await {
+        Ok(res) => res,
+        Err(e) => AttemptResult {
             success: false,
-            log_entry: format!("Unknown action: {}", action),
+            log_entry: format!("{} on {} ({}) failed: {}", action, name, scope, e),
         },
     }
 }
 
-async fn run_systemctl_unit_action(name: &str, action: &str) -> AttemptResult {
-    let unit_name = name.to_string();
-    let systemctl_action = action.to_string();
+async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResult<AttemptResult> {
+    let connection = if scope == "session" {
+        Connection::session().await?
+    } else {
+        Connection::system().await?
+    };
+    let manager = SystemdManagerProxy::new(&connection).await?;
 
-    match task::spawn_blocking(move || {
-        let output = std::process::Command::new("systemctl")
-            .arg(&systemctl_action)
-            .arg(&unit_name)
-            .output()
-            .map_err(|e| format!("Failed to run systemctl: {}", e))?;
-
-        if output.status.success() {
-            Ok(AttemptResult {
-                success: true,
-                log_entry: format!("{} on {} completed", systemctl_action, unit_name),
-            })
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let err_msg = if stderr.is_empty() {
-                format!("exit code {}", output.status.code().unwrap_or(-1))
-            } else {
-                stderr
-            };
-            Ok(AttemptResult {
-                success: false,
-                log_entry: format!("{} on {} failed: {}", systemctl_action, unit_name, err_msg),
-            })
+    match action {
+        "start" => {
+            manager.start_unit(name, "replace").await?;
         }
-    })
-    .await {
-        Ok(res) => match res {
-            Ok(r) => r,
-            Err(e) => AttemptResult {
+        "stop" => {
+            manager.stop_unit(name, "replace").await?;
+        }
+        "restart" => {
+            manager.restart_unit(name, "replace").await?;
+        }
+        "reload" => {
+            manager.reload_unit(name, "replace").await?;
+        }
+        "enable" => {
+            manager
+                .enable_unit_files(vec![name.to_string()], false, true)
+                .await?;
+        }
+        "disable" => {
+            manager
+                .disable_unit_files(vec![name.to_string()], false)
+                .await?;
+        }
+        "mask" => {
+            manager
+                .mask_unit_files(vec![name.to_string()], false, true)
+                .await?;
+        }
+        "unmask" => {
+            manager
+                .unmask_unit_files(vec![name.to_string()], false)
+                .await?;
+        }
+        _ => {
+            return Ok(AttemptResult {
                 success: false,
-                log_entry: e,
-            }
-        },
-        Err(e) => AttemptResult {
-            success: false,
-            log_entry: format!("Task failed: {}", e),
+                log_entry: format!("Unknown action: {}", action),
+            });
         }
     }
+
+    Ok(AttemptResult {
+        success: true,
+        log_entry: format!("{} on {} completed", action, name),
+    })
 }
 
 fn build_unit_file_state_map(unit_files: Vec<(String, String)>) -> HashMap<String, String> {

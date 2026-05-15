@@ -6,7 +6,7 @@
 
 - **Security First:** Start as an unprivileged user. `lazysysd` never needs elevated privileges itself; privileged actions are handed off to the system `polkit`, which can authenticate using whatever mechanism is available on the system, such as a password, fingerprint reader, or smart card. Password entry is handled via an integrated `pkttyagent` in an embedded PTY modal when needed.
 - **Unified Unit Management:** Seamlessly browse and control both **System (global)** and **User (session)** units from a single interface.
-- **Enhanced Filtering:** Powerful multi-category filters (Scope, Active, Enablement, Load) with **real-time unit counts** in dropdowns for immediate feedback.
+- **Enhanced Filtering:** Powerful multi-category filters (Scope, Active, Enablement, Load).
 - **Service Dashboard:** Efficiently list and discover units with high-performance client-side fuzzy search.
 - **Log Viewer:** Integrated `journalctl` browser with automatic syntax highlighting. Includes a **Visual Select** mode for yanking multiple log lines to the system clipboard.
 - **Unit File Editor:** View unit configurations directly with syntax highlighting. Supports creating **drop-in overrides** or editing the full unit file via your `$EDITOR`.
@@ -15,9 +15,10 @@
 
 <details>
   <summary>Why another TUI for managing systemd services?</summary>
-  This tool is not the first of its kind. I have used [systemctl-tui](https://github.com/rgwood/systemctl-tui) and [systemd-manager-tui](https://github.com/matheus-git/systemd-manager-tui) for a while, and I nearly forgot how to use `systemctl` from the command line. Those tools share one major security drawback: they require `sudo` for privileged operations. In today’s supply-chain threat landscape, that is a serious risk because a TUI app depends on many components, and any compromised dependency could become a full-privilege attack vector.
 
-`lazysysd` was built with a different security model from the ground up. It should not be run with `sudo`; instead, privileged actions are handled through `polkit` and `pkttyagent`. The authentication flow stays fully embedded in the app and follows the principle of least privilege, keeping the experience as secure as possible.
+This tool is not the first of its kind. I have been using [systemctl-tui](https://github.com/rgwood/systemctl-tui) and [systemd-manager-tui](https://github.com/matheus-git/systemd-manager-tui) extensively to the point that I forgot how to use `systemctl` from the command line. However those tools share one major security drawback: they require `sudo` for privileged operations. In today’s supply-chain threat landscape, that is a serious risk because a TUI app depends on many components, and any compromised dependency could become a full-privilege attack vector.
+
+`lazysysd` was built with a different security model from the ground up. It should never be run with `sudo`; instead, privileged actions are handled through `polkit` and `pkttyagent`. The authentication flow stays fully embedded in the app and follows the principle of least privilege, keeping the experience as secure as possible.
 
 </details>
 

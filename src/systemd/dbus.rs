@@ -27,6 +27,10 @@ pub struct UnitRow {
     pub _job_path: OwnedObjectPath,
 }
 
+type UnitFileState = (String, String);
+type UnitFileChange = (String, String, String);
+type UnitFileChanges = Vec<UnitFileChange>;
+
 #[proxy(
     interface = "org.freedesktop.systemd1.Manager",
     default_service = "org.freedesktop.systemd1",
@@ -52,26 +56,18 @@ trait SystemdManager {
         files: Vec<String>,
         runtime: bool,
         force: bool,
-    ) -> ZbusResult<(bool, Vec<(String, String, String)>)>;
+    ) -> ZbusResult<(bool, UnitFileChanges)>;
     #[zbus(allow_interactive_auth)]
-    fn disable_unit_files(
-        &self,
-        files: Vec<String>,
-        runtime: bool,
-    ) -> ZbusResult<Vec<(String, String, String)>>;
+    fn disable_unit_files(&self, files: Vec<String>, runtime: bool) -> ZbusResult<UnitFileChanges>;
     #[zbus(allow_interactive_auth)]
     fn mask_unit_files(
         &self,
         files: Vec<String>,
         runtime: bool,
         force: bool,
-    ) -> ZbusResult<Vec<(String, String, String)>>;
+    ) -> ZbusResult<UnitFileChanges>;
     #[zbus(allow_interactive_auth)]
-    fn unmask_unit_files(
-        &self,
-        files: Vec<String>,
-        runtime: bool,
-    ) -> ZbusResult<Vec<(String, String, String)>>;
+    fn unmask_unit_files(&self, files: Vec<String>, runtime: bool) -> ZbusResult<UnitFileChanges>;
 }
 
 #[proxy(
@@ -231,7 +227,7 @@ async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResu
     Ok(AttemptResult { success: true })
 }
 
-fn build_unit_file_state_map(unit_files: Vec<(String, String)>) -> HashMap<String, String> {
+fn build_unit_file_state_map(unit_files: Vec<UnitFileState>) -> HashMap<String, String> {
     unit_files
         .into_iter()
         .filter_map(|(path, state)| {

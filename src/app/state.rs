@@ -432,7 +432,7 @@ fn build_override_template(unit_name: &str, source_path: &str) -> String {
 }
 
 pub fn copy_to_clipboard(text: &str) -> String {
-    let candidates: [(&str, &[&str]); 3] =
+    let candidates: [(&str, &[&str]); 2] =
         [("wl-copy", &[]), ("xclip", &["-selection", "clipboard"])];
     for (cmd, args) in candidates {
         let mut child = match Command::new(cmd)

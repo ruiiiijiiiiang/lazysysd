@@ -71,7 +71,6 @@ pub enum PrivilegedAction {
 
 pub struct AttemptResult {
     pub success: bool,
-    pub log_entry: String,
 }
 
 pub enum AppInternalEvent {

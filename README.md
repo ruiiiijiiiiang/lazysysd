@@ -4,38 +4,56 @@
 
 ## Features
 
-- **Security First:** Start as an unprivileged user. Use `polkit` for interactive authorization only when needed, handling password entry via an integrated `pkttyagent` in an embedded PTY modal.
-- **Service Dashboard:** Efficiently list and filter all systemd units with high-performance client-side fuzzy search.
-- **Log Viewer:** Integrated `journalctl` browser with automatic syntax highlighting (dates, IPs, log levels) powered by `tailspin`.
-- **Unit File Editor:** View unit configurations directly in the TUI and suspend to your `$EDITOR` for quick modifications.
-- **Vim-style Navigation:** Global keyboard shortcuts for scrolling, paging, and searching.
+- **Security First:** Start as an unprivileged user. `lazysysd` never needs elevated privileges itself; privileged actions are handed off to the system `polkit`, which can authenticate using whatever mechanism is available on the system, such as a password, fingerprint reader, or smart card. Password entry is handled via an integrated `pkttyagent` in an embedded PTY modal when needed.
+- **Unified Unit Management:** Seamlessly browse and control both **System (global)** and **User (session)** units from a single interface.
+- **Enhanced Filtering:** Powerful multi-category filters (Scope, Active, Enablement, Load) with **real-time unit counts** in dropdowns for immediate feedback.
+- **Service Dashboard:** Efficiently list and discover units with high-performance client-side fuzzy search.
+- **Log Viewer:** Integrated `journalctl` browser with automatic syntax highlighting. Includes a **Visual Select** mode for yanking multiple log lines to the system clipboard.
+- **Unit File Editor:** View unit configurations directly with syntax highlighting. Supports creating **drop-in overrides** or editing the full unit file via your `$EDITOR`.
+- **Vim-style Navigation:** Global keyboard shortcuts for intuitive scrolling, paging, and searching.
 - **Asynchronous & Responsive:** Built on `tokio` and `zbus`, ensuring the UI remains ultra-smooth even during heavy D-Bus or journal operations.
+
+<details>
+  <summary>Why another TUI for managing systemd services?</summary>
+  This tool is not the first of its kind. I have used [systemctl-tui](https://github.com/rgwood/systemctl-tui) and [systemd-manager-tui](https://github.com/matheus-git/systemd-manager-tui) for a while, and I nearly forgot how to use `systemctl` from the command line. Those tools share one major security drawback: they require `sudo` for privileged operations. In today’s supply-chain threat landscape, that is a serious risk because a TUI app depends on many components, and any compromised dependency could become a full-privilege attack vector.
+
+`lazysysd` was built with a different security model from the ground up. It should not be run with `sudo`; instead, privileged actions are handled through `polkit` and `pkttyagent`. The authentication flow stays fully embedded in the app and follows the principle of least privilege, keeping the experience as secure as possible.
+
+</details>
 
 ## Keybindings
 
 ### Global
 
 - `q`: Quit application
-- `Esc`: Return to unit list / Cancel authentication
+- `Esc`: Return to unit list / Cancel authentication / Close filter menu
 
 ### Unit List
 
-- `j` / `k`: Navigate up/down
+- `j` / `k` or `Up` / `Down`: Navigate up/down
+- `gg` / `G`: Jump to top/bottom
+- `Ctrl+u` / `Ctrl+d`: Scroll half-page up/down
+- `Ctrl+b` / `Ctrl+f`: Scroll full-page up/down
 - `/`: Enter fuzzy search mode
-- `a` / `n` / `o`: Open active, enablement, and load filters
+- `p` / `a` / `n` / `o`: Open Scope, Active, Enablement, or Load filter menus
 - `s` / `t` / `r` / `R`: Start, stop, restart, or reload the selected unit
 - `e` / `d` / `m` / `u`: Enable, disable, mask, or unmask the selected unit
-- `g`: Refresh unit list immediately
 - `Enter` / `l`: View unit logs
 - `v`: View unit file
 
-### Log / File Viewer
+### Log Viewer
 
+- `v`: Toggle **Visual Select** mode
+- `Space` (Visual Select): Toggle selection of the current line
+- `y` / `Enter` (Visual Select): Yank selected lines to clipboard
+- `Ctrl+r`: Refresh logs
+
+### Unit File Viewer
+
+- `e`: Create/Edit **drop-in override** (`override.conf`)
+- `E`: Edit **full unit file** (replaces unit fragment)
 - `j` / `k`: Scroll one line
-- `Ctrl+u` / `Ctrl+d`: Scroll half-page up/down
-- `Ctrl+b` / `Ctrl+f`: Scroll full-page up/down
-- `r` (Log View only): Refresh logs
-- `e` (File View only): Edit file in `$EDITOR`
+- `gg` / `G`: Jump to start/end
 
 ## Technical Stack
 
@@ -44,7 +62,7 @@
 - **D-Bus Communication:** [zbus](https://github.com/dbus2/zbus)
 - **Privilege Escalation:** `pkttyagent` managed via [portable-pty](https://github.com/wez/wezterm/tree/main/pty)
 - **Highlighting:** [tailspin](https://github.com/bensadeh/tailspin) & [ansi-to-tui](https://github.com/colored-finance/ansi-to-tui)
-- **Fuzzy Matching:** [fuzzy-matcher](https://github.com/lotabout/fuzzy-matcher)
+- **Fuzzy Matching:** [fuzzy-matcher](https://github.com/lotabout/fuzzy-matcher) (SkimMatcherV2)
 
 ## Installation
 
@@ -52,26 +70,14 @@
 
 - `systemd`
 - `polkit`
-- Rust toolchain (latest stable)
+- (Optional) a system clipboard tool: `wl-copy` (Wayland) or `xclip` (X11)
 
-### Build from source
+### Build with Nix
 
 ```bash
-git clone https://github.com/youruser/lazysysd.git
-cd lazysysd
-cargo build --release
-./target/release/lazysysd
+nix build
+./result/bin/lazysysd
 ```
-
-## Architecture
-
-The project follows a modular structure for better maintainability:
-
-- `src/main.rs`: Entry point and async event loop.
-- `src/app/state.rs`: Central application state and input handling.
-- `src/systemd/`: Specialized logic for D-Bus (`dbus.rs`), authentication (`auth.rs`), and journal logging (`journal.rs`).
-- `src/ui/`: Rendering logic (`render.rs`) and terminal utilities (`utils.rs`).
-- `src/models.rs`: Shared domain models and internal event types.
 
 ## License
 

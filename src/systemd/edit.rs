@@ -17,16 +17,7 @@ pub async fn perform_unit_edit(
 ) -> AttemptResult {
     match perform_unit_edit_inner(unit_name, scope, mode, content).await {
         Ok(result) => result,
-        Err(err) => AttemptResult {
-            success: false,
-            log_entry: format!(
-                "{} for {} ({}) failed: {}",
-                mode.action_label(),
-                unit_name,
-                scope,
-                err
-            ),
-        },
+        Err(_) => AttemptResult { success: false },
     }
 }
 
@@ -73,15 +64,9 @@ async fn perform_unit_edit_inner(
         .map_err(|e| Error::other(format!("systemctl edit failed: {e}")))?;
 
     if output.status.success() {
-        Ok(AttemptResult {
-            success: true,
-            log_entry: format!("applied {} for {}", mode.action_label(), unit_name),
-        })
+        Ok(AttemptResult { success: true })
     } else {
-        Ok(AttemptResult {
-            success: false,
-            log_entry: format!("{} for {} failed", mode.action_label(), unit_name),
-        })
+        Ok(AttemptResult { success: false })
     }
 }
 

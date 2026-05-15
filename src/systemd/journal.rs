@@ -16,7 +16,12 @@ impl JournalManager {
         }
     }
 
-    pub async fn fetch_logs(&self, unit_name: &str, scope: &str, limit: usize) -> Result<Vec<String>> {
+    pub async fn fetch_logs(
+        &self,
+        unit_name: &str,
+        scope: &str,
+        limit: usize,
+    ) -> Result<Vec<String>> {
         let mut command = Command::new("journalctl");
         if scope == "session" {
             command.arg("--user");

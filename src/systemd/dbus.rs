@@ -115,17 +115,12 @@ pub async fn get_unit_fragment_path(unit_path: &OwnedObjectPath, scope: &str) ->
 
 pub async fn fetch_all_units() -> Result<Vec<UnitInfo>> {
     let mut all_units = Vec::new();
-
-    // Fetch system units
     if let Ok(system_units) = fetch_units_from_scope("global").await {
         all_units.extend(system_units);
     }
-
-    // Fetch session units (might fail if no session bus)
     if let Ok(session_units) = fetch_units_from_scope("session").await {
         all_units.extend(session_units);
     }
-
     Ok(all_units)
 }
 
@@ -151,21 +146,31 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
             .await
             .map_err(|e| Error::other(format!("list_unit_files failed: {e}")))?,
     );
-    let mut units = Vec::with_capacity(units_raw.len());
 
-    for u in units_raw {
-        let enablement_state = resolve_enablement_state(&manager, &u.name, &unit_file_states).await;
-        units.push(UnitInfo {
-            name: u.name,
-            description: u.description,
-            scope: scope.to_string(),
-            load_state: u.load_state,
-            active_state: u.active_state,
-            enablement_state,
-            sub_state: u.sub_state,
-            path: u.path,
-        });
-    }
+    use futures::{StreamExt, stream};
+
+    let units = stream::iter(units_raw)
+        .map(|u| {
+            let manager = &manager;
+            let unit_file_states = &unit_file_states;
+            async move {
+                let enablement_state =
+                    resolve_enablement_state(manager, &u.name, unit_file_states).await;
+                UnitInfo {
+                    name: u.name,
+                    description: u.description,
+                    scope: scope.to_string(),
+                    load_state: u.load_state,
+                    active_state: u.active_state,
+                    enablement_state,
+                    sub_state: u.sub_state,
+                    path: u.path,
+                }
+            }
+        })
+        .buffer_unordered(10)
+        .collect::<Vec<_>>()
+        .await;
 
     Ok(units)
 }
@@ -173,10 +178,7 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
 pub async fn perform_unit_action(name: &str, scope: &str, action: &str) -> AttemptResult {
     match run_dbus_unit_action(name, scope, action).await {
         Ok(res) => res,
-        Err(e) => AttemptResult {
-            success: false,
-            log_entry: format!("{} on {} ({}) failed: {}", action, name, scope, e),
-        },
+        Err(_) => AttemptResult { success: false },
     }
 }
 
@@ -222,17 +224,11 @@ async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResu
                 .await?;
         }
         _ => {
-            return Ok(AttemptResult {
-                success: false,
-                log_entry: format!("Unknown action: {}", action),
-            });
+            return Ok(AttemptResult { success: false });
         }
     }
 
-    Ok(AttemptResult {
-        success: true,
-        log_entry: format!("{} on {} completed", action, name),
-    })
+    Ok(AttemptResult { success: true })
 }
 
 fn build_unit_file_state_map(unit_files: Vec<(String, String)>) -> HashMap<String, String> {
@@ -272,8 +268,20 @@ async fn resolve_enablement_state(
         return state;
     }
 
+    let has_file = unit_name.ends_with(".service")
+        || unit_name.ends_with(".socket")
+        || unit_name.ends_with(".timer")
+        || unit_name.ends_with(".mount")
+        || unit_name.ends_with(".automount")
+        || unit_name.ends_with(".path")
+        || unit_name.ends_with(".swap");
+
+    if !has_file {
+        return "static".to_string();
+    }
+
     manager
         .get_unit_file_state(unit_name)
         .await
-        .unwrap_or_else(|_| "unknown".to_string())
+        .unwrap_or_else(|_| "transient".to_string())
 }

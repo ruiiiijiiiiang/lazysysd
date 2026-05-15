@@ -6,11 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
-use crate::{
-    app::state::App,
-    models::UnitInfo,
-    ui::render::render_scrollbar,
-};
+use crate::{app::state::App, models::UnitInfo, ui::render::render_scrollbar};
 
 pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
     app.last_area_height = area.height.saturating_sub(2);

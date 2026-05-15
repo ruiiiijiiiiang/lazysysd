@@ -3,57 +3,40 @@ use ratatui::text::Line;
 use crate::app::state::{App, ViewMode};
 
 pub fn help_text(app: &App) -> Vec<Line<'static>> {
-    match app.view_mode {
+    let items = match app.view_mode {
         ViewMode::UnitList => {
             if app.open_filter_menu.is_some() {
-                vec![
-                    Line::from(" Esc/q: Close "),
-                    Line::from(" a    : All   "),
-                    Line::from(" Use shown keys"),
-                    Line::from(" Pick one option"),
-                ]
+                vec!["Esc/q: Close", "a: All", "Use shown keys", "Pick one"]
             } else {
                 vec![
-                    Line::from(" j/k, g/G, q: Move, Top/Bottom, Quit"),
-                    Line::from(" Ctrl+r, /: Refresh, Search"),
-                    Line::from(" p/a/n/o, v: Filters, View File"),
-                    Line::from(" Enter/l: Logs"),
-                    Line::from(" s/t/r: Start/Stop/Restart"),
-                    Line::from(" R, e/d: Reload, Enable/Disable"),
-                    Line::from(" m/u : Mask/Unmask"),
+                    "j/k: Move",
+                    "gg/G: Top/Bottom",
+                    "/: Search",
+                    "p/a/n/o: Filters",
+                    "v: View File",
+                    "Enter/l: Logs",
+                    "s/t/r: Start/Stop/Restart",
+                    "R, e/d: Reload, Enable/Disable",
+                    "m/u: Mask/Unmask",
+                    "q: Quit",
                 ]
             }
         }
         ViewMode::LogView => {
             if app.visual_select {
-                vec![
-                    Line::from(" Esc : Cancel "),
-                    Line::from(" j/k : Move   "),
-                    Line::from(" Space: Toggle"),
-                    Line::from(" y/Enter: Yank"),
-                ]
+                vec!["Esc: Cancel", "j/k: Move", "Space: Toggle", "y/Enter: Yank"]
             } else {
-                vec![
-                    Line::from(" Esc/q: Back "),
-                    Line::from(" Ctrl+r: Refresh"),
-                    Line::from(" v    : Select "),
-                ]
+                vec!["Esc/q: Back", "Ctrl+r: Refresh", "v: Select"]
             }
         }
         ViewMode::FileView => {
             if app.pending_edit_review.is_some() {
-                vec![
-                    Line::from(" a/Enter: Apply "),
-                    Line::from(" d/Esc : Discard"),
-                    Line::from(" q     : Discard"),
-                ]
+                vec!["a/Enter: Apply", "d/Esc/q: Discard"]
             } else {
-                vec![
-                    Line::from(" Esc/q: Back "),
-                    Line::from(" e    : Override"),
-                    Line::from(" E    : Replace "),
-                ]
+                vec!["Esc/q: Back", "e: Override", "E: Replace"]
             }
         }
-    }
+    };
+
+    vec![Line::from(items.join("  |  "))]
 }

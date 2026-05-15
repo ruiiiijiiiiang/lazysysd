@@ -7,10 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::{
-    models::EditReview,
-    systemd::auth::EmbeddedAuthFlow,
-};
+use crate::{models::EditReview, systemd::auth::EmbeddedAuthFlow};
 
 pub fn render_edit_review_modal(frame: &mut Frame, review: &EditReview) {
     let area = centered_rect(72, 38, frame.area());
@@ -51,7 +48,7 @@ pub fn render_edit_review_modal(frame: &mut Frame, review: &EditReview) {
 }
 
 pub fn render_auth_modal(frame: &mut Frame, auth: &EmbeddedAuthFlow) {
-    let area = centered_rect(80, 60, frame.area());
+    let area = centered_rect(33, 25, frame.area());
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(" Authentication Required ")
@@ -63,7 +60,6 @@ pub fn render_auth_modal(frame: &mut Frame, auth: &EmbeddedAuthFlow) {
         vertical: 1,
         horizontal: 1,
     });
-    let layout = Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(inner);
 
     let prompt = if auth.pane.output.trim().is_empty() {
         Text::from("Waiting for polkit agent...")
@@ -73,18 +69,7 @@ pub fn render_auth_modal(frame: &mut Frame, auth: &EmbeddedAuthFlow) {
             Err(_) => Text::from(auth.pane.output.as_str()),
         }
     };
-    frame.render_widget(
-        Paragraph::new(prompt)
-            .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title(" Prompt ")),
-        layout[0],
-    );
-    frame.render_widget(
-        Paragraph::new("Enter password into terminal. Esc to cancel.")
-            .centered()
-            .block(Block::default().borders(Borders::ALL)),
-        layout[1],
-    );
+    frame.render_widget(Paragraph::new(prompt).wrap(Wrap { trim: false }), inner);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

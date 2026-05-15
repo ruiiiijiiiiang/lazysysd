@@ -7,10 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
-use crate::{
-    app::state::App,
-    ui::render::render_scrollbar,
-};
+use crate::{app::state::App, ui::render::render_scrollbar};
 
 pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()

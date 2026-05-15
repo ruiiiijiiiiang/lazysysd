@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::HashSet,
     io::{Read, Result, Write},
     process::{Command, Stdio},
     sync::Arc,
@@ -21,7 +21,6 @@ use crate::{
     },
 };
 
-pub const LOG_CAPACITY: usize = 10;
 pub const AUTH_START_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,7 +80,6 @@ pub struct App {
     pub pending_action: Option<PendingAction>,
     pub pending_edit_review: Option<EditReview>,
 
-    pub logs: VecDeque<String>,
     pub embedded_auth: Option<EmbeddedAuthFlow>,
     pub active_privileged_action: Option<PrivilegedAction>,
     pub internal_tx: mpsc::Sender<AppInternalEvent>,
@@ -116,7 +114,6 @@ impl App {
             file_scroll: 0,
             pending_action: None,
             pending_edit_review: None,
-            logs: VecDeque::new(),
             embedded_auth: None,
             active_privileged_action: None,
             internal_tx,
@@ -130,7 +127,6 @@ impl App {
 
     pub async fn new(internal_tx: mpsc::Sender<AppInternalEvent>) -> Self {
         let mut app = Self::blank(internal_tx);
-        app.push_log("lazysysd started");
         app.refresh_units().await;
         app
     }
@@ -212,11 +208,6 @@ impl App {
 
     pub fn finish_edit_request(&mut self, request: EditRequest, edited_content: String) {
         if edited_content == request.initial_content {
-            self.push_log(format!(
-                "{} edit cancelled for {}",
-                request.mode.action_label(),
-                request.unit_name
-            ));
             return;
         }
 
@@ -231,11 +222,6 @@ impl App {
             restore_content: request.restore_content,
             restore_path: request.restore_path,
         });
-        self.push_log(format!(
-            "{} draft ready for {}",
-            request.mode.action_label(),
-            request.unit_name
-        ));
     }
 
     pub fn move_selection(&mut self, delta: i32) {
@@ -352,11 +338,6 @@ impl App {
             self.unit_file_content = review.restore_content;
             self.unit_file_path = review.restore_path;
             self.file_scroll = 0;
-            self.push_log(format!(
-                "{} draft discarded for {}",
-                review.mode.action_label(),
-                review.unit_name
-            ));
         }
     }
 
@@ -386,7 +367,8 @@ impl App {
             return Ok(());
         }
 
-        let pane = crate::systemd::auth::EmbeddedAuthPane::spawn(cols, rows, self.internal_tx.clone())?;
+        let pane =
+            crate::systemd::auth::EmbeddedAuthPane::spawn(cols, rows, self.internal_tx.clone())?;
         let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel_clone = Arc::clone(&cancel_flag);
         let tx_clone = self.internal_tx.clone();
@@ -409,23 +391,24 @@ impl App {
                     scope,
                     mode,
                     content,
-                } => crate::systemd::edit::perform_unit_edit(&unit_name, &scope, mode, content).await,
+                } => {
+                    crate::systemd::edit::perform_unit_edit(&unit_name, &scope, mode, content).await
+                }
             };
             let _ = tx_clone.send(AppInternalEvent::AuthResult(result)).await;
         });
 
-        self.push_log(privileged_action_log(&action));
         self.active_privileged_action = Some(action);
         self.embedded_auth = Some(crate::systemd::auth::EmbeddedAuthFlow { pane, cancel_flag });
         Ok(())
     }
 
-    pub fn cancel_embedded_auth(&mut self, reason: &str) {
+    pub fn cancel_embedded_auth(&mut self, _reason: &str) {
         self.active_privileged_action = None;
         if let Some(mut flow) = self.embedded_auth.take() {
-            flow.cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            flow.cancel_flag
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             flow.pane.stop();
-            self.push_log(reason.to_string());
         }
     }
 
@@ -434,13 +417,6 @@ impl App {
             flow.pane.resize(cols, rows)?;
         }
         Ok(())
-    }
-
-    pub fn push_log(&mut self, entry: impl Into<String>) {
-        if self.logs.len() >= LOG_CAPACITY {
-            self.logs.pop_front();
-        }
-        self.logs.push_back(entry.into());
     }
 }
 
@@ -455,37 +431,9 @@ fn build_override_template(unit_name: &str, source_path: &str) -> String {
     )
 }
 
-fn privileged_action_log(action: &PrivilegedAction) -> String {
-    match action {
-        PrivilegedAction::UnitCommand {
-            unit_name,
-            scope,
-            action,
-        } => {
-            format!("auth required for {} on {} ({})", action, unit_name, scope)
-        }
-        PrivilegedAction::ApplyEdit {
-            unit_name,
-            scope,
-            mode,
-            ..
-        } => {
-            format!(
-                "auth required to apply {} for {} ({})",
-                mode.action_label(),
-                unit_name,
-                scope
-            )
-        }
-    }
-}
-
 pub fn copy_to_clipboard(text: &str) -> String {
-    let candidates: [(&str, &[&str]); 3] = [
-        ("wl-copy", &[]),
-        ("xclip", &["-selection", "clipboard"]),
-        ("pbcopy", &[]),
-    ];
+    let candidates: [(&str, &[&str]); 3] =
+        [("wl-copy", &[]), ("xclip", &["-selection", "clipboard"])];
     for (cmd, args) in candidates {
         let mut child = match Command::new(cmd)
             .args(args)

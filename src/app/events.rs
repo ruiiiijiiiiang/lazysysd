@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::state::{App, ViewMode, NavAction};
+use crate::app::state::{App, NavAction, ViewMode};
 use crate::models::{AppInternalEvent, PrivilegedAction, UnitEditMode};
 
 impl App {
@@ -56,11 +56,9 @@ impl App {
                                 .collect::<Vec<_>>()
                                 .join("\n");
                             let cloned = text.clone();
-                            let msg =
-                                tokio::task::spawn_blocking(move || crate::app::state::copy_to_clipboard(&cloned))
-                                    .await
-                                    .unwrap_or_else(|e| format!("Clipboard task panic: {e}"));
-                            self.push_log(msg);
+                            tokio::task::spawn_blocking(move || {
+                                crate::app::state::copy_to_clipboard(&cloned)
+                            });
                         }
                         self.visual_select = false;
                         self.selected_log_lines.clear();
@@ -172,10 +170,6 @@ impl App {
             }
             KeyCode::Char('p') => {
                 self.open_filter_menu = Some(crate::app::state::FilterMenu::Scope);
-                Ok(false)
-            }
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.refresh_units().await;
                 Ok(false)
             }
             KeyCode::Char('l') | KeyCode::Enter => {
@@ -371,20 +365,17 @@ impl App {
                 self.units = units;
                 self.is_loading = false;
                 self.update_filter();
-                self.push_log("units loaded");
             }
             AppInternalEvent::LogsLoaded(logs) => {
                 self.unit_logs = logs;
                 self.is_loading = false;
                 self.log_state
                     .select(Some(self.unit_logs.len().saturating_sub(1)));
-                self.push_log("logs loaded");
             }
             AppInternalEvent::FileLoaded(content, path) => {
                 self.unit_file_content = content;
                 self.unit_file_path = path;
                 self.is_loading = false;
-                self.push_log("unit file loaded");
             }
             AppInternalEvent::PtyOutput(chunk) => {
                 if let Some(flow) = self.embedded_auth.as_mut() {
@@ -401,7 +392,6 @@ impl App {
                     });
                 }
                 let action = self.active_privileged_action.take();
-                self.push_log(result.log_entry);
                 if result.success {
                     match action {
                         Some(PrivilegedAction::UnitCommand { .. }) => {
@@ -419,9 +409,8 @@ impl App {
                     }
                 }
             }
-            AppInternalEvent::Error(err) => {
+            AppInternalEvent::Error(_err) => {
                 self.is_loading = false;
-                self.push_log(err);
             }
         }
     }

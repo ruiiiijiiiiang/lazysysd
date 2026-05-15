@@ -1,20 +1,17 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Margin, Rect},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{
+        Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
 };
 
 use crate::{
     app::state::{App, ViewMode},
     ui::components::{
-        file_view::draw_file_view,
-        header::draw_unit_header,
-        header::render_filter_menu,
-        help::help_text,
-        logs::draw_log_view,
-        modals::render_auth_modal,
-        modals::render_edit_review_modal,
-        unit_list::draw_unit_list,
+        file_view::draw_file_view, header::draw_unit_header, header::render_filter_menu,
+        help::help_text, logs::draw_log_view, modals::render_auth_modal,
+        modals::render_edit_review_modal, unit_list::draw_unit_list,
     },
 };
 
@@ -45,7 +42,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let main_layout = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(10),
-        Constraint::Length(8),
+        Constraint::Length(4),
     ])
     .split(frame.area());
 
@@ -80,24 +77,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ViewMode::FileView => draw_file_view(frame, app, main_layout[1]),
     }
 
-    let help_layout = Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)])
-        .split(main_layout[2]);
-
-    let logs_items: Vec<ListItem> = app
-        .logs
-        .iter()
-        .rev()
-        .map(|s| ListItem::new(s.as_str()))
-        .collect();
-    frame.render_widget(
-        List::new(logs_items).block(Block::default().borders(Borders::ALL).title(" Event Log ")),
-        help_layout[0],
-    );
-
     frame.render_widget(
         Paragraph::new(help_text(app))
-            .block(Block::default().borders(Borders::ALL).title(" Help ")),
-        help_layout[1],
+            .block(Block::default().borders(Borders::ALL).title(" Help "))
+            .wrap(ratatui::widgets::Wrap { trim: true }),
+        main_layout[2],
     );
 
     if let Some((scope_rect, active_rect, enablement_rect, load_rect)) = filter_anchors

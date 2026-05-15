@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashSet};
 
-use crate::models::{UnitInfo};
 use crate::app::state::{App, FilterMenu, FilterMenuOption};
+use crate::models::UnitInfo;
 
 impl FilterMenu {
     pub fn title(self) -> &'static str {
@@ -292,9 +292,9 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{UnitInfo};
-    use zbus::zvariant::OwnedObjectPath;
+    use crate::models::UnitInfo;
     use tokio::sync::mpsc;
+    use zbus::zvariant::OwnedObjectPath;
 
     fn test_app(units: Vec<UnitInfo>) -> App {
         let (tx, _rx) = mpsc::channel(1);

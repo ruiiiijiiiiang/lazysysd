@@ -50,15 +50,15 @@ fn search_segment_content(app: &App) -> (Text<'static>, Style) {
         ViewMode::FileView => "Type / to search unit file...",
     };
 
-    if app.search_query.is_empty() && !app.is_searching {
+    if app.search.query.is_empty() && !app.search.is_active {
         (
             Text::from(placeholder),
             search_segment_style(false, false),
         )
     } else {
         (
-            render_search_text(&app.search_query, app.search_cursor),
-            search_segment_style(app.is_searching, !app.search_query.is_empty()),
+            render_search_text(&app.search.query, app.search.cursor),
+            search_segment_style(app.search.is_active, !app.search.query.is_empty()),
         )
     }
 }
@@ -134,7 +134,7 @@ fn unit_list_segment_spec(app: &App, menu: FilterMenu) -> SegmentSpec {
     } else {
         Style::default().fg(Color::White).bold()
     };
-    let border_style = if app.open_filter_menu == Some(menu) {
+    let border_style = if app.unit_list.open_filter_menu == Some(menu) {
         Style::default().fg(Color::Yellow)
     } else if value != "all" {
         Style::default().fg(Color::Cyan)

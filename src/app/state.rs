@@ -75,26 +75,244 @@ pub struct UnitSelectionKey {
     pub path: String,
 }
 
-pub struct App {
+#[derive(Default)]
+pub struct UnitListState {
     pub units: Vec<UnitInfo>,
-    pub filtered_units: Vec<usize>,
-    pub list_state: ListState,
-    pub selected_unit_key: UnitSelectionKey,
-    pub search_query: String,
-    pub is_searching: bool,
-    pub active_state_filter: Option<String>,
-    pub enablement_state_filter: Option<String>,
-    pub load_state_filter: Option<String>,
+    pub filtered_indices: Vec<usize>,
+    pub state: ListState,
+    pub selected_key: UnitSelectionKey,
+    pub active_filter: Option<String>,
+    pub enablement_filter: Option<String>,
+    pub load_filter: Option<String>,
     pub scope_filter: Option<String>,
     pub open_filter_menu: Option<FilterMenu>,
+}
+
+#[derive(Default)]
+pub struct LogViewState {
+    pub logs: Vec<String>,
+    pub state: ListState,
+    pub visual_select: bool,
+    pub visual_line_select: bool,
+    pub selected_lines: HashSet<usize>,
+    pub line_marks: Vec<usize>,
+}
+
+#[derive(Default)]
+pub struct FileViewState {
+    pub content: String,
+    pub path: String,
+    pub scroll: u16,
+    pub search_match: Option<usize>,
+}
+
+impl UnitListState {
+    pub fn select_index(&mut self, index: Option<usize>) {
+        self.state.select(index);
+        self.selected_key = index
+            .and_then(|i| self.filtered_indices.get(i).copied())
+            .and_then(|unit_index| self.units.get(unit_index))
+            .map(|unit| UnitSelectionKey {
+                name: unit.name.clone(),
+                scope: unit.scope.clone(),
+                path: unit.path.to_string(),
+            })
+            .unwrap_or_default();
+    }
+
+    pub fn move_selection(&mut self, delta: i32) {
+        if self.filtered_indices.is_empty() {
+            return;
+        }
+        let i = match self.state.selected() {
+            Some(i) => {
+                let next = i as i32 + delta;
+                if next < 0 {
+                    0
+                } else if next >= self.filtered_indices.len() as i32 {
+                    self.filtered_indices.len() - 1
+                } else {
+                    next as usize
+                }
+            }
+            None => 0,
+        };
+        self.select_index(Some(i));
+    }
+}
+
+impl LogViewState {
+    pub fn move_selection(&mut self, delta: i32) {
+        if self.logs.is_empty() {
+            return;
+        }
+        let i = match self.state.selected() {
+            Some(i) => {
+                let next = i as i32 + delta;
+                if next < 0 {
+                    0
+                } else if next >= self.logs.len() as i32 {
+                    self.logs.len() - 1
+                } else {
+                    next as usize
+                }
+            }
+            None => {
+                if delta > 0 {
+                    0
+                } else {
+                    self.logs.len().saturating_sub(1)
+                }
+            }
+        };
+        self.state.select(Some(i));
+    }
+
+    pub fn toggle_line_mark(&mut self) {
+        let Some(index) = self.state.selected() else {
+            return;
+        };
+
+        if self.line_marks.contains(&index) {
+            self.line_marks.retain(|&i| i != index);
+            return;
+        }
+
+        if self.line_marks.len() == 2 {
+            self.line_marks.remove(0);
+        }
+
+        self.line_marks.push(index);
+    }
+
+    pub fn selected_line_range(&self) -> Option<(usize, usize)> {
+        match self.line_marks.as_slice() {
+            [only] => Some((*only, *only)),
+            [start, end] => Some(((*start).min(*end), (*start).max(*end))),
+            _ => None,
+        }
+    }
+
+    pub fn selected_lines_text(&self) -> Option<String> {
+        let (start, end) = self.selected_line_range()?;
+        let lines: Vec<&str> = (start..=end)
+            .filter_map(|index| self.logs.get(index).map(|line| line.as_str()))
+            .collect();
+
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
+        }
+    }
+
+    pub fn clear_visual_modes(&mut self) {
+        self.visual_select = false;
+        self.visual_line_select = false;
+        self.selected_lines.clear();
+        self.line_marks.clear();
+    }
+}
+
+impl FileViewState {
+    pub fn move_scroll(&mut self, delta: i32, _height: u16) {
+        let total_lines = self.content.lines().count() as i32;
+        let next_scroll = self.scroll as i32 + delta;
+        self.scroll = next_scroll
+            .clamp(0, total_lines.saturating_sub(1).max(0)) as u16;
+    }
+}
+
+pub trait Navigable {
+    fn navigate(&mut self, action: NavAction, height: u16);
+}
+
+impl Navigable for UnitListState {
+    fn navigate(&mut self, action: NavAction, height: u16) {
+        let half_height = height as i32 / 2;
+        match action {
+            NavAction::Up => self.move_selection(-1),
+            NavAction::Down => self.move_selection(1),
+            NavAction::HalfPageUp => self.move_selection(-half_height),
+            NavAction::HalfPageDown => self.move_selection(half_height),
+            NavAction::PageUp => self.move_selection(-(height as i32)),
+            NavAction::PageDown => self.move_selection(height as i32),
+            NavAction::Top => self.select_index(Some(0)),
+            NavAction::Bottom => {
+                if !self.filtered_indices.is_empty() {
+                    self.select_index(Some(self.filtered_indices.len().saturating_sub(1)));
+                }
+            }
+        }
+    }
+}
+
+impl Navigable for LogViewState {
+    fn navigate(&mut self, action: NavAction, height: u16) {
+        let half_height = height as i32 / 2;
+        match action {
+            NavAction::Up => self.move_selection(-1),
+            NavAction::Down => self.move_selection(1),
+            NavAction::HalfPageUp => self.move_selection(-half_height),
+            NavAction::HalfPageDown => self.move_selection(half_height),
+            NavAction::PageUp => self.move_selection(-(height as i32)),
+            NavAction::PageDown => self.move_selection(height as i32),
+            NavAction::Top => self.state.select(Some(0)),
+            NavAction::Bottom => {
+                if !self.logs.is_empty() {
+                    self.state.select(Some(self.logs.len().saturating_sub(1)));
+                }
+            }
+        }
+    }
+}
+
+impl Navigable for FileViewState {
+    fn navigate(&mut self, action: NavAction, height: u16) {
+        let half_height = height as i32 / 2;
+        let total_lines = self.content.lines().count() as i32;
+        match action {
+            NavAction::Up => self.move_scroll(-1, height),
+            NavAction::Down => self.move_scroll(1, height),
+            NavAction::HalfPageUp => self.move_scroll(-half_height, height),
+            NavAction::HalfPageDown => self.move_scroll(half_height, height),
+            NavAction::PageUp => self.move_scroll(-(height as i32), height),
+            NavAction::PageDown => self.move_scroll(height as i32, height),
+            NavAction::Top => self.scroll = 0,
+            NavAction::Bottom => {
+                self.scroll = total_lines.saturating_sub(height as i32).max(0) as u16
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct SearchState {
+    pub query: String,
+    pub is_active: bool,
+    pub cursor: usize,
+}
+
+impl SearchState {
+    pub fn start(&mut self) {
+        self.is_active = true;
+        self.cursor = self.query.chars().count();
+    }
+
+    pub fn clear(&mut self) {
+        self.is_active = false;
+        self.query.clear();
+        self.cursor = 0;
+    }
+}
+pub struct App {
     pub view_mode: ViewMode,
-    pub unit_logs: Vec<String>,
-    pub log_state: ListState,
+    pub unit_list: UnitListState,
+    pub log_view: LogViewState,
+    pub file_view: FileViewState,
+    pub search: SearchState,
+
     pub last_area_height: u16,
-    pub unit_file_content: String,
-    pub unit_file_path: String,
-    pub file_scroll: u16,
-    pub file_search_match: Option<usize>,
     pub pending_action: Option<PendingAction>,
     pub pending_edit_review: Option<EditReview>,
 
@@ -104,37 +322,18 @@ pub struct App {
 
     pub matcher: RefCell<Matcher>,
     pub is_loading: bool,
-
-    pub visual_select: bool,
-    pub visual_line_select: bool,
-    pub search_cursor: usize,
-    pub selected_log_lines: HashSet<usize>,
-    pub selected_log_line_marks: Vec<usize>,
     pub pending_nav_prefix: Option<char>,
 }
 
 impl App {
     pub fn blank(internal_tx: mpsc::Sender<AppInternalEvent>) -> Self {
         Self {
-            units: Vec::new(),
-            filtered_units: Vec::new(),
-            list_state: ListState::default(),
-            selected_unit_key: UnitSelectionKey::default(),
-            search_query: String::new(),
-            is_searching: false,
-            active_state_filter: None,
-            enablement_state_filter: None,
-            load_state_filter: None,
-            scope_filter: None,
-            open_filter_menu: None,
             view_mode: ViewMode::UnitList,
-            unit_logs: Vec::new(),
-            log_state: ListState::default(),
+            unit_list: UnitListState::default(),
+            log_view: LogViewState::default(),
+            file_view: FileViewState::default(),
+            search: SearchState::default(),
             last_area_height: 0,
-            unit_file_content: String::new(),
-            unit_file_path: String::new(),
-            file_scroll: 0,
-            file_search_match: None,
             pending_action: None,
             pending_edit_review: None,
             embedded_auth: None,
@@ -142,11 +341,6 @@ impl App {
             internal_tx,
             matcher: RefCell::new(Matcher::default()),
             is_loading: true,
-            visual_select: false,
-            visual_line_select: false,
-            search_cursor: 0,
-            selected_log_lines: HashSet::new(),
-            selected_log_line_marks: Vec::new(),
             pending_nav_prefix: None,
         }
     }
@@ -155,6 +349,38 @@ impl App {
         let mut app = Self::blank(internal_tx);
         app.refresh_units().await;
         app
+    }
+
+    pub fn enter_unit_list_view(&mut self) {
+        self.view_mode = ViewMode::UnitList;
+        self.search.clear();
+        self.log_view.clear_visual_modes();
+        self.file_view.search_match = None;
+    }
+
+    pub async fn enter_log_view(&mut self) {
+        if let Some(unit) = self.get_selected_unit() {
+            let name = unit.name.clone();
+            let scope = unit.scope.clone();
+            self.search.clear();
+            self.view_mode = ViewMode::LogView;
+            self.log_view.logs.clear();
+            self.log_view.state.select(None);
+            self.log_view.clear_visual_modes();
+            self.fetch_unit_logs(name, scope).await;
+        }
+    }
+
+    pub async fn enter_file_view(&mut self) {
+        if let Some(unit) = self.get_selected_unit() {
+            let unit_clone = unit.clone();
+            self.search.clear();
+            self.view_mode = ViewMode::FileView;
+            self.file_view.content.clear();
+            self.file_view.path.clear();
+            self.file_view.scroll = 0;
+            self.fetch_unit_file(unit_clone).await;
+        }
     }
 
     pub async fn refresh_units(&mut self) {
@@ -233,13 +459,13 @@ impl App {
     }
 
     pub fn search_score(&self, unit: &UnitInfo) -> Option<u32> {
-        if self.search_query.is_empty() {
+        if self.search.query.is_empty() {
             return None;
         }
 
         let mut matcher = self.matcher.borrow_mut();
         let pattern = Pattern::parse(
-            &self.search_query,
+            &self.search.query,
             CaseMatching::Ignore,
             Normalization::Smart,
         );
@@ -249,7 +475,7 @@ impl App {
     }
 
     pub fn unit_matches_search(&self, unit: &UnitInfo) -> bool {
-        self.search_query.is_empty() || self.search_score(unit).is_some()
+        self.search.query.is_empty() || self.search_score(unit).is_some()
     }
 
     pub fn matches_filter_value(selected: Option<&str>, actual: &str) -> bool {
@@ -349,7 +575,7 @@ mod tests {
     fn test_app(units: Vec<UnitInfo>) -> App {
         let (tx, _rx) = mpsc::channel(1);
         let mut app = App::blank(tx);
-        app.units = units;
+        app.unit_list.units = units;
         app.is_loading = false;
         app.update_filter();
         app
@@ -385,8 +611,8 @@ mod tests {
             "enabled",
             "/test/unit/ssh",
         )]);
-        app.unit_file_content = "[Service]\nExecStart=/usr/bin/ssh\n".to_string();
-        app.unit_file_path = "/usr/lib/systemd/system/ssh.service".to_string();
+        app.file_view.content = "[Service]\nExecStart=/usr/bin/ssh\n".to_string();
+        app.file_view.path = "/usr/lib/systemd/system/ssh.service".to_string();
 
         app.finish_edit_request(
             EditRequest {
@@ -394,24 +620,24 @@ mod tests {
                 scope: "global".to_string(),
                 mode: UnitEditMode::Override,
                 initial_content: "# draft\n".to_string(),
-                restore_content: app.unit_file_content.clone(),
-                restore_path: app.unit_file_path.clone(),
+                restore_content: app.file_view.content.clone(),
+                restore_path: app.file_view.path.clone(),
             },
             "[Service]\nEnvironment=DEBUG=1\n".to_string(),
         );
 
         assert!(app.pending_edit_review.is_some());
-        assert_eq!(app.unit_file_path, "Draft Override: ssh.service");
+        assert_eq!(app.file_view.path, "Draft Override: ssh.service");
 
         app.discard_edit_review();
 
         assert!(app.pending_edit_review.is_none());
-        assert_eq!(app.unit_file_path, "/usr/lib/systemd/system/ssh.service");
-        assert_eq!(app.unit_file_content, "[Service]\nExecStart=/usr/bin/ssh\n");
+        assert_eq!(app.file_view.path, "/usr/lib/systemd/system/ssh.service");
+        assert_eq!(app.file_view.content, "[Service]\nExecStart=/usr/bin/ssh\n");
     }
 
     #[test]
-    fn select_filtered_unit_index_tracks_selected_unit_key() {
+    fn select_index_tracks_selected_unit_key() {
         let mut app = test_app(vec![
             unit(
                 "alpha.service",
@@ -431,11 +657,11 @@ mod tests {
             ),
         ]);
 
-        app.select_filtered_unit_index(Some(1));
+        app.unit_list.select_index(Some(1));
 
-        assert_eq!(app.selected_unit_key.name, "beta.service");
-        assert_eq!(app.selected_unit_key.scope, "global");
-        assert_eq!(app.selected_unit_key.path, "/test/unit/beta");
+        assert_eq!(app.unit_list.selected_key.name, "beta.service");
+        assert_eq!(app.unit_list.selected_key.scope, "global");
+        assert_eq!(app.unit_list.selected_key.path, "/test/unit/beta");
         assert_eq!(
             app.get_selected_unit().map(|unit| unit.name.as_str()),
             Some("beta.service")
@@ -452,16 +678,16 @@ mod tests {
             "enabled",
             "/test/unit/alpha",
         )]);
-        app.unit_logs = vec!["one".to_string(), "two".to_string(), "three".to_string()];
-        app.log_state.select(Some(0));
+        app.log_view.logs = vec!["one".to_string(), "two".to_string(), "three".to_string()];
+        app.log_view.state.select(Some(0));
 
         app.toggle_log_line_mark();
-        app.log_state.select(Some(1));
+        app.log_view.state.select(Some(1));
         app.toggle_log_line_mark();
-        app.log_state.select(Some(2));
+        app.log_view.state.select(Some(2));
         app.toggle_log_line_mark();
 
-        assert_eq!(app.selected_log_line_marks, vec![1, 2]);
+        assert_eq!(app.log_view.line_marks, vec![1, 2]);
         assert_eq!(app.selected_log_line_range(), Some((1, 2)));
         assert_eq!(app.selected_log_lines_text().as_deref(), Some("two\nthree"));
     }
@@ -476,22 +702,22 @@ mod tests {
             "enabled",
             "/test/unit/alpha",
         )]);
-        app.unit_logs = vec![
+        app.log_view.logs = vec![
             "aaa foo aaa".to_string(),
             "foo bar".to_string(),
             "bar foo".to_string(),
             "baz".to_string(),
         ];
-        app.search_query = "foo".to_string();
+        app.search.query = "foo".to_string();
 
         assert_eq!(app.log_search_matches(), vec![0, 1, 2]);
 
-        app.log_state.select(Some(0));
+        app.log_view.state.select(Some(0));
         app.cycle_log_search_match(true);
-        assert_eq!(app.log_state.selected(), Some(1));
+        assert_eq!(app.log_view.state.selected(), Some(1));
 
         app.cycle_log_search_match(false);
-        assert_eq!(app.log_state.selected(), Some(0));
+        assert_eq!(app.log_view.state.selected(), Some(0));
     }
 
     #[test]
@@ -504,24 +730,24 @@ mod tests {
             "enabled",
             "/test/unit/alpha",
         )]);
-        app.unit_file_content =
+        app.file_view.content =
             "[Service]\nExecStart=/usr/bin/foo\nExecStartPost=/usr/bin/foo --flag\n".to_string();
-        app.search_query = "ExecStart".to_string();
+        app.search.query = "ExecStart".to_string();
 
         assert_eq!(app.file_search_matches(), vec![1, 2]);
 
-        app.file_scroll = 0;
+        app.file_view.scroll = 0;
         app.cycle_file_search_match(true);
-        assert_eq!(app.file_search_match, Some(1));
-        assert_eq!(app.file_scroll, 1);
+        assert_eq!(app.file_view.search_match, Some(1));
+        assert_eq!(app.file_view.scroll, 1);
 
         app.cycle_file_search_match(true);
-        assert_eq!(app.file_search_match, Some(2));
-        assert_eq!(app.file_scroll, 2);
+        assert_eq!(app.file_view.search_match, Some(2));
+        assert_eq!(app.file_view.scroll, 2);
 
         app.cycle_file_search_match(false);
-        assert_eq!(app.file_search_match, Some(1));
-        assert_eq!(app.file_scroll, 1);
+        assert_eq!(app.file_view.search_match, Some(1));
+        assert_eq!(app.file_view.scroll, 1);
     }
 
     #[test]
@@ -535,26 +761,26 @@ mod tests {
             "/test/unit/alpha",
         )]);
 
-        app.search_query = "foo".to_string();
+        app.search.query = "foo".to_string();
 
         app.start_search();
 
-        assert_eq!(app.search_query, "foo");
-        assert_eq!(app.is_searching, true);
+        assert_eq!(app.search.query, "foo");
+        assert!(app.search.is_active);
     }
 
     #[test]
     fn handle_search_key_moves_cursor_and_inserts_text() {
         let (tx, _rx) = mpsc::channel(1);
         let mut app = App::blank(tx);
-        app.search_query = "foo".to_string();
-        app.search_cursor = 1;
+        app.search.query = "foo".to_string();
+        app.search.cursor = 1;
 
         app.handle_search_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
-        assert_eq!(app.search_cursor, 0);
+        assert_eq!(app.search.cursor, 0);
 
         app.handle_search_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
-        assert_eq!(app.search_query, "xfoo");
-        assert_eq!(app.search_cursor, 1);
+        assert_eq!(app.search.query, "xfoo");
+        assert_eq!(app.search.cursor, 1);
     }
 }

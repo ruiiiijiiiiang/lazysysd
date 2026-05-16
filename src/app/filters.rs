@@ -59,19 +59,19 @@ impl FilterMenu {
 
     pub fn selected_value(self, app: &App) -> Option<&str> {
         match self {
-            Self::Active => app.active_state_filter.as_deref(),
-            Self::Enablement => app.enablement_state_filter.as_deref(),
-            Self::Load => app.load_state_filter.as_deref(),
-            Self::Scope => app.scope_filter.as_deref(),
+            Self::Active => app.unit_list.active_filter.as_deref(),
+            Self::Enablement => app.unit_list.enablement_filter.as_deref(),
+            Self::Load => app.unit_list.load_filter.as_deref(),
+            Self::Scope => app.unit_list.scope_filter.as_deref(),
         }
     }
 
     pub fn set_selected_value(self, app: &mut App, value: Option<String>) {
         match self {
-            Self::Active => app.active_state_filter = value,
-            Self::Enablement => app.enablement_state_filter = value,
-            Self::Load => app.load_state_filter = value,
-            Self::Scope => app.scope_filter = value,
+            Self::Active => app.unit_list.active_filter = value,
+            Self::Enablement => app.unit_list.enablement_filter = value,
+            Self::Load => app.unit_list.load_filter = value,
+            Self::Scope => app.unit_list.scope_filter = value,
         }
     }
 
@@ -159,36 +159,39 @@ impl FilterMenu {
 
 impl App {
     pub fn reset_unit_filters(&mut self) {
-        self.search_query.clear();
-        self.active_state_filter = None;
-        self.enablement_state_filter = None;
-        self.load_state_filter = None;
-        self.scope_filter = None;
-        self.is_searching = false;
-        self.open_filter_menu = None;
-        self.search_cursor = 0;
+        self.search.query.clear();
+        self.unit_list.active_filter = None;
+        self.unit_list.enablement_filter = None;
+        self.unit_list.load_filter = None;
+        self.unit_list.scope_filter = None;
+        self.search.is_active = false;
+        self.unit_list.open_filter_menu = None;
+        self.search.cursor = 0;
         self.update_filter();
     }
 
     pub fn update_filter(&mut self) {
-        let selected_unit_key = if self.selected_unit_key == UnitSelectionKey::default() {
+        let selected_unit_key = if self.unit_list.selected_key == UnitSelectionKey::default() {
             None
         } else {
-            Some(self.selected_unit_key.clone())
+            Some(self.unit_list.selected_key.clone())
         };
 
-        if self.search_query.is_empty() {
-            self.filtered_units = self
+        if self.search.query.is_empty() {
+            self.unit_list.filtered_indices = self
+                .unit_list
                 .units
                 .iter()
                 .enumerate()
                 .filter(|(_, unit)| self.unit_matches_state_filters(unit))
                 .map(|(index, _)| index)
                 .collect();
-            self.filtered_units
-                .sort_by_key(|&index| self.units[index].name.to_ascii_lowercase());
+            self.unit_list.filtered_indices.sort_by_key(|&index| {
+                self.unit_list.units[index].name.to_ascii_lowercase()
+            });
         } else {
             let mut scored: Vec<(usize, u32)> = self
+                .unit_list
                 .units
                 .iter()
                 .enumerate()
@@ -197,13 +200,13 @@ impl App {
                 .collect();
             scored.sort_by(|(left_index, left_score), (right_index, right_score)| {
                 right_score.cmp(left_score).then_with(|| {
-                    self.units[*left_index]
+                    self.unit_list.units[*left_index]
                         .name
                         .to_ascii_lowercase()
-                        .cmp(&self.units[*right_index].name.to_ascii_lowercase())
+                        .cmp(&self.unit_list.units[*right_index].name.to_ascii_lowercase())
                 })
             });
-            self.filtered_units = scored.into_iter().map(|(index, _)| index).collect();
+            self.unit_list.filtered_indices = scored.into_iter().map(|(index, _)| index).collect();
         }
 
         self.restore_selection(selected_unit_key.as_ref());
@@ -222,6 +225,7 @@ impl App {
             value: None,
             selected: menu.selected_value(self).is_none(),
             count: self
+                .unit_list
                 .units
                 .iter()
                 .filter(|u| self.unit_matches_scope_for_menu(u, menu))
@@ -232,6 +236,7 @@ impl App {
         for label in self.sort_filter_values(menu, values) {
             let hotkey = self.assign_filter_hotkey(menu, &label, &mut used_hotkeys);
             let count = self
+                .unit_list
                 .units
                 .iter()
                 .filter(|u| {
@@ -253,35 +258,39 @@ impl App {
     }
 
     pub fn unit_matches_state_filters(&self, unit: &UnitInfo) -> bool {
-        Self::matches_filter_value(self.active_state_filter.as_deref(), &unit.active_state)
+        Self::matches_filter_value(self.unit_list.active_filter.as_deref(), &unit.active_state)
             && Self::matches_filter_value(
-                self.enablement_state_filter.as_deref(),
+                self.unit_list.enablement_filter.as_deref(),
                 &unit.enablement_state,
             )
-            && Self::matches_filter_value(self.load_state_filter.as_deref(), &unit.load_state)
-            && Self::matches_filter_value(self.scope_filter.as_deref(), &unit.scope)
+            && Self::matches_filter_value(self.unit_list.load_filter.as_deref(), &unit.load_state)
+            && Self::matches_filter_value(self.unit_list.scope_filter.as_deref(), &unit.scope)
     }
 
     pub fn unit_matches_scope_for_menu(&self, unit: &UnitInfo, menu: FilterMenu) -> bool {
         self.unit_matches_search(unit)
             && (menu == FilterMenu::Active
                 || Self::matches_filter_value(
-                    self.active_state_filter.as_deref(),
+                    self.unit_list.active_filter.as_deref(),
                     &unit.active_state,
                 ))
             && (menu == FilterMenu::Enablement
                 || Self::matches_filter_value(
-                    self.enablement_state_filter.as_deref(),
+                    self.unit_list.enablement_filter.as_deref(),
                     &unit.enablement_state,
                 ))
             && (menu == FilterMenu::Load
-                || Self::matches_filter_value(self.load_state_filter.as_deref(), &unit.load_state))
+                || Self::matches_filter_value(
+                    self.unit_list.load_filter.as_deref(),
+                    &unit.load_state,
+                ))
             && (menu == FilterMenu::Scope
-                || Self::matches_filter_value(self.scope_filter.as_deref(), &unit.scope))
+                || Self::matches_filter_value(self.unit_list.scope_filter.as_deref(), &unit.scope))
     }
 
     fn available_filter_values(&self, menu: FilterMenu, scoped: bool) -> BTreeSet<String> {
-        self.units
+        self.unit_list
+            .units
             .iter()
             .filter(|unit| !scoped || self.unit_matches_scope_for_menu(unit, menu))
             .map(|unit| menu.unit_value(unit).to_string())
@@ -351,7 +360,7 @@ mod tests {
     fn test_app(units: Vec<UnitInfo>) -> App {
         let (tx, _rx) = mpsc::channel(1);
         let mut app = App::blank(tx);
-        app.units = units;
+        app.unit_list.units = units;
         app.is_loading = false;
         app.update_filter();
         app
@@ -378,9 +387,10 @@ mod tests {
     }
 
     fn filtered_names(app: &App) -> Vec<&str> {
-        app.filtered_units
+        app.unit_list
+            .filtered_indices
             .iter()
-            .map(|&index| app.units[index].name.as_str())
+            .map(|&index| app.unit_list.units[index].name.as_str())
             .collect()
     }
 
@@ -413,9 +423,9 @@ mod tests {
             ),
         ]);
 
-        app.active_state_filter = Some("failed".to_string());
-        app.enablement_state_filter = Some("static".to_string());
-        app.search_query = "broken".to_string();
+        app.unit_list.active_filter = Some("failed".to_string());
+        app.unit_list.enablement_filter = Some("static".to_string());
+        app.search.query = "broken".to_string();
         app.update_filter();
 
         assert_eq!(filtered_names(&app), vec!["broken.service"]);
@@ -498,14 +508,14 @@ mod tests {
             ),
         ]);
 
-        app.select_filtered_unit_index(Some(2));
-        assert_eq!(app.selected_unit_key.name, "zeta.service");
+        app.unit_list.select_index(Some(2));
+        assert_eq!(app.unit_list.selected_key.name, "zeta.service");
 
-        app.search_query = "zeta".to_string();
+        app.search.query = "zeta".to_string();
         app.update_filter();
 
         assert_eq!(filtered_names(&app), vec!["zeta.service"]);
-        assert_eq!(app.selected_unit_key.name, "zeta.service");
+        assert_eq!(app.unit_list.selected_key.name, "zeta.service");
         assert_eq!(app.selected_unit_index(), Some(0));
     }
 
@@ -538,16 +548,16 @@ mod tests {
             ),
         ]);
 
-        app.selected_unit_key = UnitSelectionKey {
+        app.unit_list.selected_key = UnitSelectionKey {
             name: "gamma.service".to_string(),
             scope: "global".to_string(),
             path: "/test/unit/gamma".to_string(),
         };
-        app.list_state.select(Some(0));
+        app.unit_list.state.select(Some(0));
 
         app.update_filter();
 
-        assert_eq!(app.selected_unit_key.name, "gamma.service");
+        assert_eq!(app.unit_list.selected_key.name, "gamma.service");
         assert_eq!(app.selected_unit_index(), Some(2));
     }
 
@@ -580,12 +590,12 @@ mod tests {
             ),
         ]);
 
-        app.select_filtered_unit_index(Some(1));
-        assert_eq!(app.selected_unit_key.path, "/test/unit/dup_b");
+        app.unit_list.select_index(Some(1));
+        assert_eq!(app.unit_list.selected_key.path, "/test/unit/dup_b");
 
         app.update_filter();
 
-        assert_eq!(app.selected_unit_key.path, "/test/unit/dup_b");
+        assert_eq!(app.unit_list.selected_key.path, "/test/unit/dup_b");
         assert_eq!(
             app.get_selected_unit().map(|unit| unit.path.to_string()),
             Some("/test/unit/dup_b".to_string())
@@ -613,23 +623,23 @@ mod tests {
             ),
         ]);
 
-        app.active_state_filter = Some("failed".to_string());
-        app.enablement_state_filter = Some("masked".to_string());
-        app.load_state_filter = Some("loaded".to_string());
-        app.scope_filter = Some("global".to_string());
-        app.search_query = "zeta".to_string();
-        app.is_searching = true;
-        app.open_filter_menu = Some(FilterMenu::Active);
+        app.unit_list.active_filter = Some("failed".to_string());
+        app.unit_list.enablement_filter = Some("masked".to_string());
+        app.unit_list.load_filter = Some("loaded".to_string());
+        app.unit_list.scope_filter = Some("global".to_string());
+        app.search.query = "zeta".to_string();
+        app.search.is_active = true;
+        app.unit_list.open_filter_menu = Some(FilterMenu::Active);
 
         app.reset_unit_filters();
 
-        assert!(app.search_query.is_empty());
-        assert!(app.active_state_filter.is_none());
-        assert!(app.enablement_state_filter.is_none());
-        assert!(app.load_state_filter.is_none());
-        assert!(app.scope_filter.is_none());
-        assert!(!app.is_searching);
-        assert!(app.open_filter_menu.is_none());
+        assert!(app.search.query.is_empty());
+        assert!(app.unit_list.active_filter.is_none());
+        assert!(app.unit_list.enablement_filter.is_none());
+        assert!(app.unit_list.load_filter.is_none());
+        assert!(app.unit_list.scope_filter.is_none());
+        assert!(!app.search.is_active);
+        assert!(app.unit_list.open_filter_menu.is_none());
         assert_eq!(filtered_names(&app), vec!["alpha.service", "zeta.service"]);
     }
 

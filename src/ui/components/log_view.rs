@@ -15,12 +15,12 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
         .title(" Journal Logs ");
     app.last_area_height = area.height.saturating_sub(2);
 
-    if app.is_loading && app.unit_logs.is_empty() {
+    if app.is_loading && app.log_view.logs.is_empty() {
         frame.render_widget(
             Paragraph::new("Fetching logs...").centered().block(block),
             area,
         );
-    } else if app.unit_logs.is_empty() {
+    } else if app.log_view.logs.is_empty() {
         frame.render_widget(
             Paragraph::new("No logs found or unauthorized.")
                 .centered()
@@ -29,13 +29,13 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
         );
     } else {
         let line_range = app.selected_log_line_range();
-        let search_query = app.search_query.clone();
+        let search_query = app.search.query.clone();
         let items: Vec<ListItem> = app
-            .unit_logs
+            .log_view.logs
             .iter()
             .enumerate()
             .map(|(i, line)| {
-                let marker = if app.visual_line_select {
+                let marker = if app.log_view.visual_line_select {
                     match line_range {
                         Some((start, end)) if start == end && i == start => {
                             Span::styled("┣ ", Style::default().fg(Color::Green))
@@ -51,8 +51,8 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
                         }
                         _ => Span::raw("┋ "),
                     }
-                } else if app.visual_select {
-                    if app.selected_log_lines.contains(&i) {
+                } else if app.log_view.visual_select {
+                    if app.log_view.selected_lines.contains(&i) {
                         Span::styled("☑ ", Style::default().fg(Color::Green))
                     } else {
                         Span::raw("☐ ")
@@ -60,12 +60,12 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     Span::raw("")
                 };
-                let should_bold = if app.visual_line_select {
+                let should_bold = if app.log_view.visual_line_select {
                     line_range
                         .map(|(start, end)| i >= start && i <= end)
                         .unwrap_or(false)
                 } else {
-                    app.selected_log_lines.contains(&i)
+                    app.log_view.selected_lines.contains(&i)
                 };
 
                 match line.as_bytes().into_text() {
@@ -99,13 +99,13 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
             .block(block)
             .highlight_style(Style::default().bg(Color::DarkGray));
 
-        frame.render_stateful_widget(list, area, &mut app.log_state);
+        frame.render_stateful_widget(list, area, &mut app.log_view.state);
 
         render_scrollbar(
             frame,
             area,
-            app.log_state.selected().unwrap_or(0),
-            app.unit_logs.len(),
+            app.log_view.state.selected().unwrap_or(0),
+            app.log_view.logs.len(),
         );
     }
 }

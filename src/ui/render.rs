@@ -64,7 +64,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
 
     if let Some((scope_rect, active_rect, enablement_rect, load_rect)) = filter_anchors
-        && let Some(menu) = app.open_filter_menu
+        && let Some(menu) = app.unit_list.open_filter_menu
     {
         let anchor = match menu {
             FilterMenu::Scope => scope_rect,

@@ -11,16 +11,16 @@ use crate::{app::state::App, ui::render::render_scrollbar};
 pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Unit File: {} ", app.unit_file_path));
+        .title(format!(" Unit File: {} ", app.file_view.path));
 
-    if app.is_loading && app.unit_file_content.is_empty() {
+    if app.is_loading && app.file_view.content.is_empty() {
         frame.render_widget(
             Paragraph::new("Loading unit file...")
                 .centered()
                 .block(block),
             area,
         );
-    } else if app.unit_file_content.is_empty() {
+    } else if app.file_view.content.is_empty() {
         frame.render_widget(
             Paragraph::new("Failed to load unit file.")
                 .centered()
@@ -29,18 +29,18 @@ pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
         );
     } else {
         let lines =
-            highlight_unit_file_with_search(&app.unit_file_content, app.search_query.as_str());
+            highlight_unit_file_with_search(&app.file_view.content, app.search.query.as_str());
         let content_length = lines.len();
 
         frame.render_widget(
             Paragraph::new(lines)
                 .block(block)
-                .scroll((app.file_scroll, 0))
+                .scroll((app.file_view.scroll, 0))
                 .wrap(Wrap { trim: false }),
             area,
         );
 
-        render_scrollbar(frame, area, app.file_scroll as usize, content_length);
+        render_scrollbar(frame, area, app.file_view.scroll as usize, content_length);
     }
 }
 

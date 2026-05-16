@@ -9,24 +9,37 @@ use ratatui::{
 use crate::app::state::{App, ViewMode};
 
 pub fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
-    let columns = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area.inner(ratatui::layout::Margin {
-            vertical: 0,
-            horizontal: 1,
-        }));
+    let columns = Layout::horizontal([
+        Constraint::Percentage(33),
+        Constraint::Percentage(33),
+        Constraint::Percentage(34),
+    ])
+    .split(area.inner(ratatui::layout::Margin {
+        vertical: 0,
+        horizontal: 1,
+    }));
 
-    let (left, right) = help_columns(app);
+    let (nav, action, external) = help_columns(app);
 
     frame.render_widget(
-        Paragraph::new(left)
+        Paragraph::new(nav)
             .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::RIGHT)),
         columns[0],
     );
-    frame.render_widget(Paragraph::new(right).wrap(Wrap { trim: true }), columns[1]);
+    frame.render_widget(
+        Paragraph::new(action)
+            .wrap(Wrap { trim: true })
+            .block(Block::default().borders(Borders::RIGHT)),
+        columns[1],
+    );
+    frame.render_widget(
+        Paragraph::new(external).wrap(Wrap { trim: true }),
+        columns[2],
+    );
 }
 
-fn help_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
+fn help_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<Line<'static>>) {
     match app.view_mode {
         ViewMode::UnitList => unit_list_columns(app),
         ViewMode::LogView => log_view_columns(app),
@@ -34,97 +47,110 @@ fn help_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
     }
 }
 
-fn unit_list_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
-    if app.open_filter_menu.is_some() {
+fn nav_shortcuts() -> Vec<Line<'static>> {
+    vec![
+        shortcut("j/k", "Move up/down"),
+        shortcut("Ctrl+u/d", "Half page up/down"),
+        shortcut("Ctrl+b/f", "Full page up/down"),
+        shortcut("gg/G", "Top/Bottom"),
+    ]
+}
+
+fn unit_list_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<Line<'static>>) {
+    if app.unit_list.open_filter_menu.is_some() {
         return (
-            vec![shortcut("Esc/q", "Close")],
+            vec![],
             vec![shortcut("Shown keys", "Pick one")],
+            vec![shortcut("Esc/q", "Close")],
+        );
+    }
+
+    if app.search.is_active {
+        return (
+            vec![shortcut("Left/Right", "Move cursor")],
+            vec![shortcut("Backspace", "Delete"), shortcut("Enter", "Keep")],
+            vec![shortcut("Esc", "Clear")],
         );
     }
 
     (
-        vec![
-            shortcut("j/k", "Move up/down"),
-            shortcut("Ctrl+u/d", "Half page up/down"),
-            shortcut("Ctrl+b/f", "Full page up/down"),
-            shortcut("gg/G", "Top/Bottom"),
-        ],
+        nav_shortcuts(),
         vec![
             shortcut("/", "Search"),
             shortcut("a/n/o/p", "Toggle filters"),
             shortcut("Ctrl+r", "Reset filters"),
-            shortcut("Esc/q", "Back"),
+        ],
+        vec![
+            shortcut("l/Enter", "Logs"),
+            shortcut("f", "Unit file"),
+            shortcut("q", "Quit"),
         ],
     )
 }
 
-fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
-    if app.is_searching && app.view_mode == ViewMode::LogView {
+fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<Line<'static>>) {
+    if app.search.is_active {
         return (
-            vec![shortcut("Esc", "Clear"), shortcut("Enter", "Keep")],
-            vec![
-                shortcut("Left/Right", "Move cursor"),
-                shortcut("Backspace", "Delete"),
-            ],
+            vec![shortcut("Left/Right", "Move cursor")],
+            vec![shortcut("Backspace", "Delete"), shortcut("Enter", "Keep")],
+            vec![shortcut("Esc", "Clear")],
         );
     }
 
-    if app.visual_line_select {
+    if app.log_view.visual_line_select || app.log_view.visual_select {
+        let action_key = if app.log_view.visual_line_select {
+            "Mark"
+        } else {
+            "Toggle"
+        };
         return (
-            vec![shortcut("Space", "Mark"), shortcut("y/Enter", "Yank")],
-            vec![shortcut("Esc", "Cancel"), shortcut("j/k", "Move")],
+            nav_shortcuts(),
+            vec![shortcut("Space", action_key), shortcut("y/Enter", "Yank")],
+            vec![shortcut("Esc", "Cancel")],
         );
     }
 
-    if app.visual_select {
-        return (
-            vec![shortcut("Space", "Toggle"), shortcut("y/Enter", "Yank")],
-            vec![shortcut("Esc", "Cancel"), shortcut("j/k", "Move")],
-        );
+    let mut action = vec![shortcut("Ctrl+r", "Refresh"), shortcut("/", "Search")];
+    if !app.search.query.is_empty() {
+        action.push(shortcut("n/N", "Next/prev"));
     }
+    action.push(shortcut("v/V", "Select/Line"));
 
     (
-        vec![
-            shortcut("Ctrl+r", "Refresh"),
-            shortcut("v", "Select"),
-            shortcut("V", "Line select"),
-        ],
-        vec![
-            shortcut("e", "Export"),
-            shortcut("/", "Search"),
-            shortcut("n/N", "Next/Prev"),
-            shortcut("Esc/q", "Back"),
-        ],
+        nav_shortcuts(),
+        action,
+        vec![shortcut("e", "Open in editor"), shortcut("Esc/q", "Back")],
     )
 }
 
-fn file_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
-    if app.is_searching {
+fn file_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<Line<'static>>) {
+    if app.search.is_active {
         return (
-            vec![shortcut("Esc", "Clear"), shortcut("Enter", "Keep")],
-            vec![
-                shortcut("Left/Right", "Move cursor"),
-                shortcut("Backspace", "Delete"),
-            ],
+            vec![shortcut("Left/Right", "Move cursor")],
+            vec![shortcut("Backspace", "Delete"), shortcut("Enter", "Keep")],
+            vec![shortcut("Esc", "Clear")],
         );
     }
 
     if app.pending_edit_review.is_some() {
         return (
-            vec![shortcut("a/Enter", "Apply")],
-            vec![shortcut("d/Esc/q", "Discard")],
+            vec![],
+            vec![],
+            vec![shortcut("a/Enter", "Apply"), shortcut("d/Esc/q", "Discard")],
         );
     }
 
+    let mut action = vec![shortcut("/", "Search")];
+    if !app.search.query.is_empty() {
+        action.push(shortcut("n/N", "Next/prev"));
+    }
+
     (
+        nav_shortcuts(),
+        action,
         vec![
-            shortcut("/", "Search"),
-            shortcut("n/N", "Next/Prev"),
             shortcut("e", "Override edit"),
-        ],
-        vec![
             shortcut("E", "Replace edit"),
-            shortcut("Ctrl+b/f", "Page up/down"),
             shortcut("Esc/q", "Back"),
         ],
     )

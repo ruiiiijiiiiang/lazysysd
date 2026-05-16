@@ -13,11 +13,11 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let content_width = area.width.saturating_sub(2) as usize;
     let list_block = Block::default().borders(Borders::ALL).title(format!(
         " Units ({}/{}) ",
-        app.filtered_units.len(),
-        app.units.len()
+        app.unit_list.filtered_indices.len(),
+        app.unit_list.units.len()
     ));
 
-    if app.is_loading && app.units.is_empty() {
+    if app.is_loading && app.unit_list.units.is_empty() {
         frame.render_widget(
             Paragraph::new("Loading units...")
                 .centered()
@@ -28,11 +28,11 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
         let column_widths = unit_row_column_widths(area.width.saturating_sub(2));
         let selected_index = app.selected_unit_index();
         let items: Vec<ListItem> = app
-            .filtered_units
+            .unit_list.filtered_indices
             .iter()
             .enumerate()
             .map(|(visible_index, &i)| {
-                let unit = &app.units[i];
+                let unit = &app.unit_list.units[i];
                 ListItem::new(format_unit_row(
                     unit,
                     &column_widths,
@@ -46,13 +46,13 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
             .block(list_block)
             .highlight_style(Style::default().bg(Color::DarkGray).bold());
 
-        frame.render_stateful_widget(list, area, &mut app.list_state);
+        frame.render_stateful_widget(list, area, &mut app.unit_list.state);
 
         render_scrollbar(
             frame,
             area,
             selected_index.unwrap_or(0),
-            app.filtered_units.len(),
+            app.unit_list.filtered_indices.len(),
         );
     }
 }

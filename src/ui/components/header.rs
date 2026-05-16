@@ -44,40 +44,21 @@ fn draw_search_segment(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn search_segment_content(app: &App) -> (Text<'static>, Style) {
-    let (query, searching, placeholder) = match app.view_mode {
-        ViewMode::UnitList => (
-            app.search_query.as_str(),
-            app.is_searching,
-            "Type / to search units...",
-        ),
-        ViewMode::LogView => (
-            app.log_search_query.as_str(),
-            app.log_search_mode,
-            "Type / to search logs...",
-        ),
-        ViewMode::FileView => (
-            app.file_search_query.as_str(),
-            app.file_search_mode,
-            "Type / to search unit file...",
-        ),
+    let placeholder = match app.view_mode {
+        ViewMode::UnitList => "Type / to search units...",
+        ViewMode::LogView => "Type / to search logs...",
+        ViewMode::FileView => "Type / to search unit file...",
     };
 
-    if query.is_empty() && !searching {
+    if app.search_query.is_empty() && !app.is_searching {
         (
             Text::from(placeholder),
-            search_segment_style(searching, false),
+            search_segment_style(false, false),
         )
     } else {
         (
-            render_search_text(
-                query,
-                match app.view_mode {
-                    ViewMode::UnitList => app.search_cursor,
-                    ViewMode::LogView => app.log_search_cursor,
-                    ViewMode::FileView => app.file_search_cursor,
-                },
-            ),
-            search_segment_style(searching, !query.is_empty()),
+            render_search_text(&app.search_query, app.search_cursor),
+            search_segment_style(app.is_searching, !app.search_query.is_empty()),
         )
     }
 }

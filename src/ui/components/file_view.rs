@@ -29,7 +29,7 @@ pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
         );
     } else {
         let lines =
-            highlight_unit_file_with_search(&app.unit_file_content, app.file_search_query.as_str());
+            highlight_unit_file_with_search(&app.unit_file_content, app.search_query.as_str());
         let content_length = lines.len();
 
         frame.render_widget(

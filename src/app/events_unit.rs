@@ -15,9 +15,16 @@ impl App {
         }
 
         match key.code {
+            KeyCode::Char('r')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                self.reset_unit_filters();
+                return false;
+            }
             KeyCode::Char('/') => {
-                self.is_searching = true;
-                self.set_search_cursor_to_end();
+                self.start_search();
                 return false;
             }
             KeyCode::Char('a') => {
@@ -40,6 +47,7 @@ impl App {
                 if let Some(unit) = self.get_selected_unit() {
                     let name = unit.name.clone();
                     let scope = unit.scope.clone();
+                    self.clear_search();
                     self.view_mode = ViewMode::LogView;
                     self.unit_logs.clear();
                     self.log_state.select(None);
@@ -48,9 +56,10 @@ impl App {
                 }
                 return false;
             }
-            KeyCode::Char('v') => {
+            KeyCode::Char('f') => {
                 if let Some(unit) = self.get_selected_unit() {
                     let unit_clone = unit.clone();
+                    self.clear_search();
                     self.view_mode = ViewMode::FileView;
                     self.unit_file_content.clear();
                     self.unit_file_path.clear();
@@ -70,26 +79,6 @@ impl App {
     }
 
     pub async fn handle_file_view_key(&mut self, key: KeyEvent) -> bool {
-        if self.file_search_mode {
-            match key.code {
-                KeyCode::Esc => {
-                    self.clear_file_search();
-                }
-                KeyCode::Enter => {
-                    self.file_search_mode = false;
-                }
-                KeyCode::Left | KeyCode::Right => {
-                    self.edit_file_search_key(key);
-                }
-                KeyCode::Backspace | KeyCode::Char(_) => {
-                    self.edit_file_search_key(key);
-                    self.cycle_file_search_match(true);
-                }
-                _ => {}
-            }
-            return false;
-        }
-
         if self.handle_nav_key(key) {
             return false;
         }
@@ -97,7 +86,8 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.view_mode = ViewMode::UnitList;
-                self.clear_file_search();
+                self.clear_search();
+                self.file_search_match = None;
             }
             KeyCode::Char('e') if !self.unit_file_path.is_empty() => {
                 if let Some(request) = self.build_edit_request(UnitEditMode::Override) {
@@ -113,12 +103,12 @@ impl App {
             }
             KeyCode::Char('e') | KeyCode::Char('E') => {}
             KeyCode::Char('/') if !self.unit_file_content.is_empty() => {
-                self.start_file_search();
+                self.start_search();
             }
-            KeyCode::Char('n') if !self.file_search_query.is_empty() => {
+            KeyCode::Char('n') if !self.search_query.is_empty() => {
                 self.cycle_file_search_match(true);
             }
-            KeyCode::Char('N') if !self.file_search_query.is_empty() => {
+            KeyCode::Char('N') if !self.search_query.is_empty() => {
                 self.cycle_file_search_match(false);
             }
             _ => {}

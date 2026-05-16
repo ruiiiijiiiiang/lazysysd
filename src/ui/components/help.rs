@@ -44,26 +44,22 @@ fn unit_list_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
 
     (
         vec![
-            shortcut("j/k", "Move"),
+            shortcut("j/k", "Move up/down"),
+            shortcut("Ctrl+u/d", "Half page up/down"),
+            shortcut("Ctrl+b/f", "Full page up/down"),
             shortcut("gg/G", "Top/Bottom"),
-            shortcut("Ctrl+u/d", "Scroll half"),
-            shortcut("Ctrl+b/f", "Page up/down"),
-            shortcut("l/Enter", "Logs"),
-            shortcut("v", "Unit file"),
         ],
         vec![
             shortcut("/", "Search"),
-            shortcut("s/t/r", "Start/Stop/Restart"),
-            shortcut("R", "Reload"),
-            shortcut("e/d", "Enable/Disable"),
-            shortcut("m/u", "Mask/Unmask"),
-            shortcut("a/n/o/p", "Filters"),
+            shortcut("a/n/o/p", "Toggle filters"),
+            shortcut("Ctrl+r", "Reset filters"),
+            shortcut("Esc/q", "Back"),
         ],
     )
 }
 
 fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
-    if app.log_search_mode {
+    if app.is_searching && app.view_mode == ViewMode::LogView {
         return (
             vec![shortcut("Esc", "Clear"), shortcut("Enter", "Keep")],
             vec![
@@ -103,7 +99,7 @@ fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
 }
 
 fn file_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
-    if app.file_search_mode {
+    if app.is_searching {
         return (
             vec![shortcut("Esc", "Clear"), shortcut("Enter", "Keep")],
             vec![
@@ -137,6 +133,6 @@ fn file_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
 fn shortcut(key: &str, description: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!("{key}: "), Style::default().fg(Color::Cyan).bold()),
-        Span::styled(description.to_string(), Style::default().fg(Color::White)),
+        Span::styled(description.to_string(), Style::default()),
     ])
 }

@@ -158,6 +158,18 @@ impl FilterMenu {
 }
 
 impl App {
+    pub fn reset_unit_filters(&mut self) {
+        self.search_query.clear();
+        self.active_state_filter = None;
+        self.enablement_state_filter = None;
+        self.load_state_filter = None;
+        self.scope_filter = None;
+        self.is_searching = false;
+        self.open_filter_menu = None;
+        self.search_cursor = 0;
+        self.update_filter();
+    }
+
     pub fn update_filter(&mut self) {
         let selected_unit_key = if self.selected_unit_key == UnitSelectionKey::default() {
             None
@@ -176,7 +188,7 @@ impl App {
             self.filtered_units
                 .sort_by_key(|&index| self.units[index].name.to_ascii_lowercase());
         } else {
-            let mut scored: Vec<(usize, i64)> = self
+            let mut scored: Vec<(usize, u32)> = self
                 .units
                 .iter()
                 .enumerate()
@@ -578,6 +590,47 @@ mod tests {
             app.get_selected_unit().map(|unit| unit.path.to_string()),
             Some("/test/unit/dup_b".to_string())
         );
+    }
+
+    #[test]
+    fn reset_unit_filters_clears_state_filters_and_search_phrase() {
+        let mut app = test_app(vec![
+            unit(
+                "zeta.service",
+                "Zeta",
+                "loaded",
+                "failed",
+                "masked",
+                "/test/unit/zeta",
+            ),
+            unit(
+                "alpha.service",
+                "Alpha",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/alpha",
+            ),
+        ]);
+
+        app.active_state_filter = Some("failed".to_string());
+        app.enablement_state_filter = Some("masked".to_string());
+        app.load_state_filter = Some("loaded".to_string());
+        app.scope_filter = Some("global".to_string());
+        app.search_query = "zeta".to_string();
+        app.is_searching = true;
+        app.open_filter_menu = Some(FilterMenu::Active);
+
+        app.reset_unit_filters();
+
+        assert!(app.search_query.is_empty());
+        assert!(app.active_state_filter.is_none());
+        assert!(app.enablement_state_filter.is_none());
+        assert!(app.load_state_filter.is_none());
+        assert!(app.scope_filter.is_none());
+        assert!(!app.is_searching);
+        assert!(app.open_filter_menu.is_none());
+        assert_eq!(filtered_names(&app), vec!["alpha.service", "zeta.service"]);
     }
 
     #[test]

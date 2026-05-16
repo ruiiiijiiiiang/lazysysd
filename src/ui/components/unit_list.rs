@@ -89,7 +89,7 @@ fn format_unit_row(
 
     if is_selected {
         let detail = Line::from(vec![
-            Span::raw(" ⤷  "),
+            Span::raw(" ╟  "),
             Span::styled("Description: ", Style::default().bold()),
             Span::styled(unit.description.clone(), Style::default().fg(Color::Gray)),
             Span::raw("   "),
@@ -97,6 +97,32 @@ fn format_unit_row(
             Span::styled(unit.path.to_string(), Style::default().fg(Color::Gray)),
         ]);
         lines.push(clip_line(detail, content_width));
+
+        let actions = Line::from(vec![
+            Span::raw(" ╙  "),
+            Span::styled("Actions: ", Style::default().bold()),
+            Span::styled("l", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" logs   "),
+            Span::styled("f", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" unit file   "),
+            Span::styled("s", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" start   "),
+            Span::styled("t", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" stop   "),
+            Span::styled("r", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" restart   "),
+            Span::styled("R", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" reload   "),
+            Span::styled("e", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" enable   "),
+            Span::styled("d", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" disable   "),
+            Span::styled("m", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" mask   "),
+            Span::styled("u", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" unmask"),
+        ]);
+        lines.push(clip_line(actions, content_width));
     }
 
     lines
@@ -270,10 +296,17 @@ mod tests {
     }
 
     #[test]
-    fn selected_row_gets_two_lines_with_detail_prefix() {
+    fn selected_row_gets_action_line_with_detail_prefix() {
         let lines = format_unit_row(&unit(), &[10, 10, 10, 10, 10], 80, true);
 
-        assert_eq!(lines.len(), 2);
-        assert!(lines[1].spans[0].content.starts_with(" ⤷"));
+        assert_eq!(lines.len(), 3);
+        assert!(lines[1].spans[0].content.starts_with(" ╟ "));
+        assert!(lines[2].spans[0].content.starts_with(" ╙ "));
+        assert!(
+            lines[2]
+                .spans
+                .iter()
+                .any(|span| span.content == "Actions: ")
+        );
     }
 }

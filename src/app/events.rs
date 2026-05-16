@@ -7,7 +7,7 @@ use crossterm::{
 use tokio::task::spawn_blocking;
 
 use crate::{
-    app::state::{App, NavAction, ViewMode},
+    app::state::{App, NavAction, SearchInputAction, ViewMode},
     models::{AppInternalEvent, PrivilegedAction},
 };
 
@@ -33,26 +33,32 @@ impl App {
             return self.handle_edit_review_key(key).await;
         }
 
-        if self.view_mode == ViewMode::LogView {
-            return Ok(self.handle_log_view_key(key).await);
-        }
-
-        if self.view_mode == ViewMode::FileView {
-            return Ok(self.handle_file_view_key(key).await);
-        }
-
         if self.is_searching {
             match key.code {
-                KeyCode::Esc | KeyCode::Enter => {
-                    self.is_searching = false;
+                KeyCode::Esc => {
+                    self.clear_search();
+                    if self.view_mode == ViewMode::FileView {
+                        self.file_search_match = None;
+                    }
                 }
-                KeyCode::Left | KeyCode::Right | KeyCode::Backspace | KeyCode::Char(_) => {
-                    self.edit_unit_search_key(key);
-                    self.update_filter();
+                KeyCode::Enter => self.is_searching = false,
+                _ => {
+                    if self.handle_search_key(key) == Some(SearchInputAction::Edit) {
+                        match self.view_mode {
+                            ViewMode::UnitList => self.update_filter(),
+                            ViewMode::LogView => self.cycle_log_search_match(true),
+                            ViewMode::FileView => self.cycle_file_search_match(true),
+                        }
+                    }
                 }
-                _ => {}
             }
             return Ok(false);
+        }
+
+        match self.view_mode {
+            ViewMode::LogView => return Ok(self.handle_log_view_key(key).await),
+            ViewMode::FileView => return Ok(self.handle_file_view_key(key).await),
+            ViewMode::UnitList => {}
         }
 
         if self.open_filter_menu.is_some() {
@@ -60,70 +66,11 @@ impl App {
             return Ok(false);
         }
 
-        if self.view_mode == ViewMode::UnitList && key.code == KeyCode::Char('q') {
+        if key.code == KeyCode::Char('q') {
             return Ok(true);
         }
 
-        if self.view_mode == ViewMode::UnitList {
-            return Ok(self.handle_unit_list_key(key).await);
-        }
-
-        if self.handle_nav_key(key) {
-            return Ok(false);
-        }
-
-        match key.code {
-            KeyCode::Char('/') => {
-                self.is_searching = true;
-                self.set_search_cursor_to_end();
-                Ok(false)
-            }
-            KeyCode::Char('a') => {
-                self.open_filter_menu = Some(crate::app::state::FilterMenu::Active);
-                Ok(false)
-            }
-            KeyCode::Char('n') => {
-                self.open_filter_menu = Some(crate::app::state::FilterMenu::Enablement);
-                Ok(false)
-            }
-            KeyCode::Char('o') => {
-                self.open_filter_menu = Some(crate::app::state::FilterMenu::Load);
-                Ok(false)
-            }
-            KeyCode::Char('p') => {
-                self.open_filter_menu = Some(crate::app::state::FilterMenu::Scope);
-                Ok(false)
-            }
-            KeyCode::Char('l') | KeyCode::Enter => {
-                if let Some(unit) = self.get_selected_unit() {
-                    let name = unit.name.clone();
-                    let scope = unit.scope.clone();
-                    self.view_mode = ViewMode::LogView;
-                    self.unit_logs.clear();
-                    self.log_state.select(None);
-                    self.clear_log_visual_modes();
-                    self.fetch_unit_logs(name, scope).await;
-                }
-                Ok(false)
-            }
-            KeyCode::Char('v') => {
-                if let Some(unit) = self.get_selected_unit() {
-                    let unit_clone = unit.clone();
-                    self.view_mode = ViewMode::FileView;
-                    self.unit_file_content.clear();
-                    self.unit_file_path.clear();
-                    self.file_scroll = 0;
-                    self.fetch_unit_file(unit_clone).await;
-                }
-                Ok(false)
-            }
-            _ => {
-                if let Some(action) = unit_command_for_key(key) {
-                    self.trigger_selected_unit_command(action).await?;
-                }
-                Ok(false)
-            }
-        }
+        Ok(self.handle_unit_list_key(key).await)
     }
 
     pub fn handle_nav_key(&mut self, key: KeyEvent) -> bool {

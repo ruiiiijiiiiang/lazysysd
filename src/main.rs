@@ -44,7 +44,7 @@ fn resolve_editor() -> Result<String> {
         .or_else(|| env::var("EDITOR").ok().filter(|e| !e.is_empty()))
         .map(|e| vec![e])
         .unwrap_or_else(|| {
-            ["nano", "vim", "vi", "emacs", "pico"]
+            ["nano", "vim", "vi", "emacs"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect()

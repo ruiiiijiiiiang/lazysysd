@@ -1,30 +1,28 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::state::{App, ViewMode};
+use crate::app::state::{App, SearchInputAction};
 
 impl App {
-    pub fn clear_file_search(&mut self) {
-        self.file_search_mode = false;
-        self.file_search_query.clear();
-        self.file_search_cursor = 0;
-        self.file_search_match = None;
+    pub fn start_search(&mut self) {
+        self.is_searching = true;
+        self.search_cursor = self.search_query.chars().count();
     }
 
-    pub fn start_file_search(&mut self) {
-        self.file_search_mode = true;
-        self.file_search_cursor = self.file_search_query.chars().count();
-        self.file_search_match = None;
+    pub fn clear_search(&mut self) {
+        self.is_searching = false;
+        self.search_query.clear();
+        self.search_cursor = 0;
     }
 
     pub fn file_search_matches(&self) -> Vec<usize> {
-        if self.file_search_query.is_empty() {
+        if self.search_query.is_empty() {
             return Vec::new();
         }
 
         self.unit_file_content
             .lines()
             .enumerate()
-            .filter(|(_, line)| line.contains(&self.file_search_query))
+            .filter(|(_, line)| line.contains(&self.search_query))
             .map(|(index, _)| index)
             .collect()
     }
@@ -63,42 +61,15 @@ impl App {
         self.selected_log_line_marks.clear();
     }
 
-    pub fn clear_log_search(&mut self) {
-        self.log_search_mode = false;
-        self.log_search_query.clear();
-        self.log_search_cursor = 0;
-    }
-
-    pub fn start_log_search(&mut self) {
-        self.log_search_mode = true;
-        self.log_search_cursor = self.log_search_query.chars().count();
-    }
-
-    pub fn edit_unit_search_key(&mut self, key: KeyEvent) {
-        edit_search_key_impl(key, &mut self.search_query, &mut self.search_cursor);
-    }
-
-    pub fn edit_log_search_key(&mut self, key: KeyEvent) {
-        edit_search_key_impl(key, &mut self.log_search_query, &mut self.log_search_cursor);
-    }
-
-    pub fn edit_file_search_key(&mut self, key: KeyEvent) {
-        edit_search_key_impl(
-            key,
-            &mut self.file_search_query,
-            &mut self.file_search_cursor,
-        );
-    }
-
     pub fn log_search_matches(&self) -> Vec<usize> {
-        if self.log_search_query.is_empty() {
+        if self.search_query.is_empty() {
             return Vec::new();
         }
 
         self.unit_logs
             .iter()
             .enumerate()
-            .filter(|(_, line)| line.contains(&self.log_search_query))
+            .filter(|(_, line)| line.contains(&self.search_query))
             .map(|(index, _)| index)
             .collect()
     }
@@ -166,11 +137,17 @@ impl App {
         }
     }
 
-    pub fn set_search_cursor_to_end(&mut self) {
-        match self.view_mode {
-            ViewMode::UnitList => self.search_cursor = self.search_query.chars().count(),
-            ViewMode::LogView => self.log_search_cursor = self.log_search_query.chars().count(),
-            ViewMode::FileView => self.file_search_cursor = self.file_search_query.chars().count(),
+    pub fn handle_search_key(&mut self, key: KeyEvent) -> Option<SearchInputAction> {
+        match key.code {
+            KeyCode::Left | KeyCode::Right => {
+                edit_search_key_impl(key, &mut self.search_query, &mut self.search_cursor);
+                Some(SearchInputAction::Cursor)
+            }
+            KeyCode::Backspace | KeyCode::Char(_) => {
+                edit_search_key_impl(key, &mut self.search_query, &mut self.search_cursor);
+                Some(SearchInputAction::Edit)
+            }
+            _ => None,
         }
     }
 }

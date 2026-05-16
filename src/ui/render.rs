@@ -40,7 +40,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let main_layout = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(10),
-        Constraint::Length(8),
+        Constraint::Length(6),
     ])
     .split(frame.area());
 
@@ -54,7 +54,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     let help_block = Block::default().borders(Borders::ALL).title(" Help ");
     frame.render_widget(help_block, main_layout[2]);
-    draw_help(frame, app, main_layout[2].inner(Margin { vertical: 1, horizontal: 1 }));
+    draw_help(
+        frame,
+        app,
+        main_layout[2].inner(Margin {
+            vertical: 1,
+            horizontal: 1,
+        }),
+    );
 
     if let Some((scope_rect, active_rect, enablement_rect, load_rect)) = filter_anchors
         && let Some(menu) = app.open_filter_menu

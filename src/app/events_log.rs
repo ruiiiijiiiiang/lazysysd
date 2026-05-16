@@ -8,25 +8,6 @@ use crate::{
 
 impl App {
     pub async fn handle_log_view_key(&mut self, key: KeyEvent) -> bool {
-        if self.log_search_mode {
-            match key.code {
-                KeyCode::Esc => {
-                    self.clear_log_search();
-                }
-                KeyCode::Enter => {
-                    self.log_search_mode = false;
-                }
-                KeyCode::Left | KeyCode::Right => {
-                    self.edit_log_search_key(key);
-                }
-                KeyCode::Backspace | KeyCode::Char(_) => {
-                    self.edit_log_search_key(key);
-                    self.cycle_log_search_match(true);
-                }
-                _ => {}
-            }
-            return false;
-        }
 
         if self.visual_line_select {
             if self.handle_nav_key(key) {
@@ -99,7 +80,7 @@ impl App {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.view_mode = ViewMode::UnitList;
                 self.clear_log_visual_modes();
-                self.clear_log_search();
+                self.clear_search();
                 return false;
             }
             KeyCode::Char('v') if !self.unit_logs.is_empty() => {
@@ -119,14 +100,14 @@ impl App {
             }
             KeyCode::Char('v') | KeyCode::Char('V') => {}
             KeyCode::Char('/') if !self.unit_logs.is_empty() => {
-                self.start_log_search();
+                self.start_search();
                 return false;
             }
-            KeyCode::Char('n') if !self.log_search_query.is_empty() => {
+            KeyCode::Char('n') if !self.search_query.is_empty() => {
                 self.cycle_log_search_match(true);
                 return false;
             }
-            KeyCode::Char('N') if !self.log_search_query.is_empty() => {
+            KeyCode::Char('N') if !self.search_query.is_empty() => {
                 self.cycle_log_search_match(false);
                 return false;
             }

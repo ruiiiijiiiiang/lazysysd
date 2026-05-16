@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::HashSet,
     fs,
     io::{Read, Write},
@@ -7,7 +8,10 @@ use std::{
 };
 
 use ansi_to_tui::IntoText;
-use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
+use nucleo_matcher::{
+    Matcher, Utf32Str,
+    pattern::{CaseMatching, Normalization, Pattern},
+};
 use ratatui::widgets::ListState;
 use tokio::{spawn, sync::mpsc};
 
@@ -27,6 +31,12 @@ pub enum ViewMode {
     UnitList,
     LogView,
     FileView,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SearchInputAction {
+    Edit,
+    Cursor,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,9 +94,6 @@ pub struct App {
     pub unit_file_content: String,
     pub unit_file_path: String,
     pub file_scroll: u16,
-    pub file_search_mode: bool,
-    pub file_search_query: String,
-    pub file_search_cursor: usize,
     pub file_search_match: Option<usize>,
     pub pending_action: Option<PendingAction>,
     pub pending_edit_review: Option<EditReview>,
@@ -95,15 +102,12 @@ pub struct App {
     pub active_privileged_action: Option<PrivilegedAction>,
     pub internal_tx: mpsc::Sender<AppInternalEvent>,
 
-    pub matcher: SkimMatcherV2,
+    pub matcher: RefCell<Matcher>,
     pub is_loading: bool,
 
     pub visual_select: bool,
     pub visual_line_select: bool,
     pub search_cursor: usize,
-    pub log_search_mode: bool,
-    pub log_search_query: String,
-    pub log_search_cursor: usize,
     pub selected_log_lines: HashSet<usize>,
     pub selected_log_line_marks: Vec<usize>,
     pub pending_nav_prefix: Option<char>,
@@ -130,23 +134,17 @@ impl App {
             unit_file_content: String::new(),
             unit_file_path: String::new(),
             file_scroll: 0,
-            file_search_mode: false,
-            file_search_query: String::new(),
-            file_search_cursor: 0,
             file_search_match: None,
             pending_action: None,
             pending_edit_review: None,
             embedded_auth: None,
             active_privileged_action: None,
             internal_tx,
-            matcher: SkimMatcherV2::default(),
+            matcher: RefCell::new(Matcher::default()),
             is_loading: true,
             visual_select: false,
             visual_line_select: false,
             search_cursor: 0,
-            log_search_mode: false,
-            log_search_query: String::new(),
-            log_search_cursor: 0,
             selected_log_lines: HashSet::new(),
             selected_log_line_marks: Vec::new(),
             pending_nav_prefix: None,
@@ -234,9 +232,20 @@ impl App {
         });
     }
 
-    pub fn search_score(&self, unit: &UnitInfo) -> Option<i64> {
+    pub fn search_score(&self, unit: &UnitInfo) -> Option<u32> {
+        if self.search_query.is_empty() {
+            return None;
+        }
+
+        let mut matcher = self.matcher.borrow_mut();
+        let pattern = Pattern::parse(
+            &self.search_query,
+            CaseMatching::Ignore,
+            Normalization::Smart,
+        );
         let target = format!("{} {}", unit.name, unit.description);
-        self.matcher.fuzzy_match(&target, &self.search_query)
+        let mut buffer = Vec::new();
+        pattern.score(Utf32Str::new(target.as_str(), &mut buffer), &mut matcher)
     }
 
     pub fn unit_matches_search(&self, unit: &UnitInfo) -> bool {
@@ -473,7 +482,7 @@ mod tests {
             "bar foo".to_string(),
             "baz".to_string(),
         ];
-        app.log_search_query = "foo".to_string();
+        app.search_query = "foo".to_string();
 
         assert_eq!(app.log_search_matches(), vec![0, 1, 2]);
 
@@ -497,7 +506,7 @@ mod tests {
         )]);
         app.unit_file_content =
             "[Service]\nExecStart=/usr/bin/foo\nExecStartPost=/usr/bin/foo --flag\n".to_string();
-        app.file_search_query = "ExecStart".to_string();
+        app.search_query = "ExecStart".to_string();
 
         assert_eq!(app.file_search_matches(), vec![1, 2]);
 
@@ -516,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn entering_search_mode_preserves_existing_queries() {
+    fn entering_search_mode_preserves_existing_query() {
         let mut app = test_app(vec![unit(
             "alpha.service",
             "Alpha",
@@ -526,29 +535,25 @@ mod tests {
             "/test/unit/alpha",
         )]);
 
-        app.log_search_query = "foo".to_string();
-        app.log_search_mode = false;
-        app.file_search_query = "bar".to_string();
-        app.file_search_mode = false;
+        app.search_query = "foo".to_string();
 
-        app.log_search_mode = true;
-        app.file_search_mode = true;
+        app.start_search();
 
-        assert_eq!(app.log_search_query, "foo");
-        assert_eq!(app.file_search_query, "bar");
+        assert_eq!(app.search_query, "foo");
+        assert_eq!(app.is_searching, true);
     }
 
     #[test]
-    fn edit_unit_search_key_moves_cursor_and_inserts_text() {
+    fn handle_search_key_moves_cursor_and_inserts_text() {
         let (tx, _rx) = mpsc::channel(1);
         let mut app = App::blank(tx);
         app.search_query = "foo".to_string();
         app.search_cursor = 1;
 
-        app.edit_unit_search_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        app.handle_search_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
         assert_eq!(app.search_cursor, 0);
 
-        app.edit_unit_search_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        app.handle_search_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         assert_eq!(app.search_query, "xfoo");
         assert_eq!(app.search_cursor, 1);
     }

@@ -29,7 +29,7 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
         );
     } else {
         let line_range = app.selected_log_line_range();
-        let search_query = app.log_search_query.clone();
+        let search_query = app.search_query.clone();
         let items: Vec<ListItem> = app
             .unit_logs
             .iter()
@@ -38,13 +38,13 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 let marker = if app.visual_line_select {
                     match line_range {
                         Some((start, end)) if start == end && i == start => {
-                            Span::styled("⭢ ", Style::default().fg(Color::Green))
+                            Span::styled("┣ ", Style::default().fg(Color::Green))
                         }
                         Some((start, _)) if i == start => {
-                            Span::styled("⮣ ", Style::default().fg(Color::Green))
+                            Span::styled("┏ ", Style::default().fg(Color::Green))
                         }
                         Some((_, end)) if i == end => {
-                            Span::styled("⮡ ", Style::default().fg(Color::Green))
+                            Span::styled("┗ ", Style::default().fg(Color::Green))
                         }
                         Some((start, end)) if i >= start && i <= end => {
                             Span::styled("┃ ", Style::default().fg(Color::Green))

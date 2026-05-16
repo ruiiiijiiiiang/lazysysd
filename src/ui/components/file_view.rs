@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
@@ -73,9 +73,7 @@ fn highlight_unit_file_line_with_search(
         return highlight_exact_matches(
             Line::from(Span::styled(
                 line.to_string(),
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
+                Style::default().fg(Color::DarkGray).italic(),
             )),
             search_query,
         );
@@ -85,9 +83,7 @@ fn highlight_unit_file_line_with_search(
         return highlight_exact_matches(
             Line::from(Span::styled(
                 line.to_string(),
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Cyan).bold(),
             )),
             search_query,
         );
@@ -110,12 +106,7 @@ fn highlight_unit_file_line_with_search(
         return highlight_exact_matches(
             Line::from(vec![
                 Span::raw(indent.to_string()),
-                Span::styled(
-                    key.to_string(),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled(key.to_string(), Style::default().fg(Color::Yellow).bold()),
                 Span::styled("=".to_string(), Style::default().fg(Color::DarkGray)),
                 Span::styled(value.to_string(), Style::default().fg(Color::White)),
             ]),

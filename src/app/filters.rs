@@ -15,12 +15,36 @@ impl FilterMenu {
         }
     }
 
-    pub fn segment_title(self) -> &'static str {
+    pub fn segment_title(self, show_hotkey: bool) -> &'static str {
         match self {
-            Self::Active => " Active (a) ",
-            Self::Enablement => " Enablement (n) ",
-            Self::Load => " Load (o) ",
-            Self::Scope => " Scope (p) ",
+            Self::Active => {
+                if show_hotkey {
+                    " Active (a) "
+                } else {
+                    " Active "
+                }
+            }
+            Self::Enablement => {
+                if show_hotkey {
+                    " Enablement (n) "
+                } else {
+                    " Enablement "
+                }
+            }
+            Self::Load => {
+                if show_hotkey {
+                    " Load (o) "
+                } else {
+                    " Load "
+                }
+            }
+            Self::Scope => {
+                if show_hotkey {
+                    " Scope (p) "
+                } else {
+                    " Scope "
+                }
+            }
         }
     }
 
@@ -307,9 +331,10 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::UnitInfo;
     use tokio::sync::mpsc;
     use zbus::zvariant::OwnedObjectPath;
+
+    use crate::models::UnitInfo;
 
     fn test_app(units: Vec<UnitInfo>) -> App {
         let (tx, _rx) = mpsc::channel(1);

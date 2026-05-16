@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
@@ -42,11 +42,9 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
             })
             .collect();
 
-        let list = List::new(items).block(list_block).highlight_style(
-            Style::default()
-                .bg(Color::Rgb(40, 40, 40))
-                .add_modifier(Modifier::BOLD),
-        );
+        let list = List::new(items)
+            .block(list_block)
+            .highlight_style(Style::default().bg(Color::DarkGray).bold());
 
         frame.render_stateful_widget(list, area, &mut app.list_state);
 
@@ -69,11 +67,11 @@ fn format_unit_row(
     let mut lines = vec![Line::from(vec![
         Span::styled(
             format_cell(&unit.name, widths[0], CellAlign::Left),
-            Style::default().add_modifier(Modifier::BOLD),
+            Style::default().bold(),
         ),
         Span::styled(
             format_cell(&unit.scope, widths[1], CellAlign::Center),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(scope_color(&unit.scope)),
         ),
         Span::styled(
             format_cell(&active_sub, widths[2], CellAlign::Center),
@@ -90,11 +88,15 @@ fn format_unit_row(
     ])];
 
     if is_selected {
-        let detail = format!("⤷ {}  {}", unit.description, unit.path);
-        lines.push(Line::from(Span::styled(
-            clip_text(&detail, content_width),
-            Style::default().fg(Color::DarkGray),
-        )));
+        let detail = Line::from(vec![
+            Span::raw(" ⤷  "),
+            Span::styled("Description: ", Style::default().bold()),
+            Span::styled(unit.description.clone(), Style::default().fg(Color::Gray)),
+            Span::raw("   "),
+            Span::styled("Path: ", Style::default().bold()),
+            Span::styled(unit.path.to_string(), Style::default().fg(Color::Gray)),
+        ]);
+        lines.push(clip_line(detail, content_width));
     }
 
     lines
@@ -122,6 +124,14 @@ fn unit_row_column_widths(total_width: u16) -> [usize; 5] {
         columns[3].width as usize,
         columns[4].width as usize,
     ]
+}
+
+fn scope_color(scope: &str) -> Color {
+    match scope {
+        "global" => Color::Blue,
+        "session" => Color::Cyan,
+        _ => Color::White,
+    }
 }
 
 fn active_state_color(state: &str) -> Color {
@@ -202,11 +212,49 @@ fn clip_text(value: &str, width: usize) -> String {
     clipped
 }
 
+fn clip_line(line: Line<'static>, width: usize) -> Line<'static> {
+    if width == 0 {
+        return Line::from(Vec::<Span<'static>>::new());
+    }
+
+    let mut spans = Vec::new();
+    let mut remaining = width;
+
+    for span in line.spans {
+        if remaining == 0 {
+            break;
+        }
+
+        let text = span.content.to_string();
+        let text_width = text.chars().count();
+        if text_width <= remaining {
+            spans.push(Span::styled(text, span.style));
+            remaining -= text_width;
+            continue;
+        }
+
+        if remaining <= 3 {
+            spans.push(Span::styled(
+                text.chars().take(remaining).collect::<String>(),
+                span.style,
+            ));
+            break;
+        }
+
+        let clipped: String = text.chars().take(remaining - 3).collect();
+        spans.push(Span::styled(format!("{}...", clipped), span.style));
+        break;
+    }
+
+    Line::from(spans)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::UnitInfo;
     use zbus::zvariant::OwnedObjectPath;
+
+    use crate::models::UnitInfo;
 
     fn unit() -> UnitInfo {
         UnitInfo {
@@ -226,6 +274,6 @@ mod tests {
         let lines = format_unit_row(&unit(), &[10, 10, 10, 10, 10], 80, true);
 
         assert_eq!(lines.len(), 2);
-        assert!(lines[1].spans[0].content.starts_with('⤷'));
+        assert!(lines[1].spans[0].content.starts_with(" ⤷"));
     }
 }

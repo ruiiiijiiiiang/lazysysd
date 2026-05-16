@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
@@ -63,20 +63,22 @@ fn search_segment_content(app: &App) -> (Text<'static>, Style) {
     };
 
     if query.is_empty() && !searching {
-        (Text::from(placeholder), search_segment_style(searching, false))
+        (
+            Text::from(placeholder),
+            search_segment_style(searching, false),
+        )
     } else {
         (
-            render_search_text(query, search_cursor_for(app)),
+            render_search_text(
+                query,
+                match app.view_mode {
+                    ViewMode::UnitList => app.search_cursor,
+                    ViewMode::LogView => app.log_search_cursor,
+                    ViewMode::FileView => app.file_search_cursor,
+                },
+            ),
             search_segment_style(searching, !query.is_empty()),
         )
-    }
-}
-
-fn search_cursor_for(app: &App) -> usize {
-    match app.view_mode {
-        ViewMode::UnitList => app.search_cursor,
-        ViewMode::LogView => app.log_search_cursor,
-        ViewMode::FileView => app.file_search_cursor,
     }
 }
 
@@ -89,10 +91,7 @@ fn render_search_text(query: &str, cursor: usize) -> Text<'static> {
         if index == cursor {
             spans.push(Span::styled(
                 ch.to_string(),
-                Style::default()
-                    .bg(Color::Yellow)
-                    .fg(Color::Black)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().bg(Color::Yellow).fg(Color::Black).bold(),
             ));
         } else {
             spans.push(Span::raw(ch.to_string()));
@@ -102,10 +101,7 @@ fn render_search_text(query: &str, cursor: usize) -> Text<'static> {
     if cursor == query.chars().count() {
         spans.push(Span::styled(
             " ",
-            Style::default()
-                .bg(Color::Yellow)
-                .fg(Color::Black)
-                .add_modifier(Modifier::BOLD),
+            Style::default().bg(Color::Yellow).fg(Color::Black).bold(),
         ));
     }
 
@@ -126,7 +122,7 @@ fn draw_status_segment(frame: &mut Frame, app: &App, area: Rect, menu: FilterMen
     let spec = status_segment_spec(app, menu);
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(menu.segment_title())
+        .title(menu.segment_title(app.view_mode == ViewMode::UnitList))
         .border_style(spec.border_style);
 
     frame.render_widget(
@@ -155,16 +151,14 @@ fn unit_list_segment_spec(app: &App, menu: FilterMenu) -> SegmentSpec {
     let value_style = if value == "all" {
         Style::default().fg(Color::DarkGray)
     } else {
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::White).bold()
     };
     let border_style = if app.open_filter_menu == Some(menu) {
         Style::default().fg(Color::Yellow)
     } else if value != "all" {
         Style::default().fg(Color::Cyan)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default()
     };
 
     SegmentSpec {
@@ -218,9 +212,7 @@ fn active_state_style(state: &str) -> Style {
 fn enablement_state_style(state: &str) -> Style {
     Style::default().fg(match state {
         "enabled" | "enabled-runtime" => Color::Green,
-        "static" | "generated" | "alias" | "indirect" | "linked" | "linked-runtime" => {
-            Color::Cyan
-        }
+        "static" | "generated" | "alias" | "indirect" | "linked" | "linked-runtime" => Color::Cyan,
         "disabled" | "disabled-runtime" => Color::DarkGray,
         "masked" | "masked-runtime" | "invalid" => Color::Red,
         "transient" | "unknown" => Color::Yellow,
@@ -268,11 +260,9 @@ pub fn render_filter_menu(
     let items: Vec<ListItem> = options
         .into_iter()
         .map(|option| {
-            let marker = if option.selected { "(*)" } else { "( )" };
+            let marker = if option.selected { "◉" } else { "○" };
             let style = if option.selected {
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Green).bold()
             } else {
                 Style::default()
             };

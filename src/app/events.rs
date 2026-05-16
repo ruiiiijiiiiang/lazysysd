@@ -4,10 +4,11 @@ use crossterm::{
     event::{KeyCode, KeyEvent, KeyModifiers},
     terminal,
 };
+use tokio::task::spawn_blocking;
 
 use crate::{
-    app::state::{App, FilterMenu, NavAction, ViewMode, copy_to_clipboard},
-    models::{AppInternalEvent, PendingAction, PrivilegedAction, UnitEditMode},
+    app::state::{App, NavAction, ViewMode},
+    models::{AppInternalEvent, PrivilegedAction},
 };
 
 impl App {
@@ -33,196 +34,11 @@ impl App {
         }
 
         if self.view_mode == ViewMode::LogView {
-            if self.log_search_mode {
-                match key.code {
-                    KeyCode::Esc => {
-                        self.clear_log_search();
-                    }
-                    KeyCode::Enter => {
-                        self.log_search_mode = false;
-                    }
-                    KeyCode::Left | KeyCode::Right => {
-                        self.edit_log_search_key(key);
-                    }
-                    KeyCode::Backspace | KeyCode::Char(_) => {
-                        self.edit_log_search_key(key);
-                        self.cycle_log_search_match(true);
-                    }
-                    _ => {}
-                }
-                return Ok(false);
-            }
-
-            if self.visual_line_select {
-                if self.handle_nav_key(key) {
-                    return Ok(false);
-                }
-                match key.code {
-                    KeyCode::Esc => {
-                        self.visual_line_select = false;
-                        self.selected_log_line_marks.clear();
-                    }
-                    KeyCode::Char(' ') => {
-                        self.toggle_log_line_mark();
-                    }
-                    KeyCode::Char('y') | KeyCode::Enter => {
-                        if let Some(text) = self.selected_log_lines_text() {
-                            let cloned = text.clone();
-                            tokio::task::spawn_blocking(move || copy_to_clipboard(&cloned));
-                        }
-                        self.visual_line_select = false;
-                        self.selected_log_line_marks.clear();
-                    }
-                    _ => {}
-                }
-                return Ok(false);
-            }
-
-            if self.visual_select {
-                if self.handle_nav_key(key) {
-                    return Ok(false);
-                }
-                match key.code {
-                    KeyCode::Esc => {
-                        self.clear_log_visual_modes();
-                    }
-                    KeyCode::Char(' ') => {
-                        if let Some(i) = self.log_state.selected()
-                            && !self.selected_log_lines.remove(&i)
-                        {
-                            self.selected_log_lines.insert(i);
-                        }
-                    }
-                    KeyCode::Char('y') | KeyCode::Enter => {
-                        let mut indices: Vec<_> = self.selected_log_lines.iter().collect();
-                        indices.sort();
-                        let selected: Vec<&String> = indices
-                            .into_iter()
-                            .filter_map(|&i| self.unit_logs.get(i))
-                            .collect();
-                        if !selected.is_empty() {
-                            let text = selected
-                                .into_iter()
-                                .map(|s| s.as_str())
-                                .collect::<Vec<_>>()
-                                .join("\n");
-                            let cloned = text.clone();
-                            tokio::task::spawn_blocking(move || copy_to_clipboard(&cloned));
-                        }
-                        self.clear_log_visual_modes();
-                    }
-                    _ => {}
-                }
-                return Ok(false);
-            }
-
-            if self.handle_nav_key(key) {
-                return Ok(false);
-            }
-
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('q') => {
-                    self.view_mode = ViewMode::UnitList;
-                    self.clear_log_visual_modes();
-                    self.clear_log_search();
-                }
-                KeyCode::Char('v') if !self.unit_logs.is_empty() => {
-                    self.visual_select = true;
-                    if self.log_state.selected().is_none() {
-                        self.log_state.select(Some(0));
-                    }
-                }
-                KeyCode::Char('V') if !self.unit_logs.is_empty() => {
-                    self.visual_line_select = true;
-                    self.selected_log_line_marks.clear();
-                    if self.log_state.selected().is_none() {
-                        self.log_state.select(Some(0));
-                    }
-                }
-                KeyCode::Char('v') => {}
-                KeyCode::Char('V') => {}
-                KeyCode::Char('/') if !self.unit_logs.is_empty() => {
-                    self.start_log_search();
-                }
-                KeyCode::Char('n') if !self.log_search_query.is_empty() => {
-                    self.cycle_log_search_match(true);
-                }
-                KeyCode::Char('N') if !self.log_search_query.is_empty() => {
-                    self.cycle_log_search_match(false);
-                }
-                KeyCode::Char('e') if !self.unit_logs.is_empty() => {
-                    self.pending_action = Some(PendingAction::EditText {
-                        filename: format!("log-{}.txt", self.selected_unit_key.name),
-                        content: self.unit_logs.join("\n"),
-                    });
-                    return Ok(true);
-                }
-                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if let Some(unit) = self.get_selected_unit() {
-                        let name = unit.name.clone();
-                        let scope = unit.scope.clone();
-                        self.fetch_unit_logs(name, scope).await;
-                    }
-                }
-                _ => {}
-            }
-            return Ok(false);
+            return Ok(self.handle_log_view_key(key).await);
         }
 
         if self.view_mode == ViewMode::FileView {
-            if self.file_search_mode {
-                match key.code {
-                    KeyCode::Esc => {
-                        self.clear_file_search();
-                    }
-                    KeyCode::Enter => {
-                        self.file_search_mode = false;
-                    }
-                    KeyCode::Left | KeyCode::Right => {
-                        self.edit_file_search_key(key);
-                    }
-                    KeyCode::Backspace | KeyCode::Char(_) => {
-                        self.edit_file_search_key(key);
-                        self.cycle_file_search_match(true);
-                    }
-                    _ => {}
-                }
-                return Ok(false);
-            }
-
-            if self.handle_nav_key(key) {
-                return Ok(false);
-            }
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('q') => {
-                    self.view_mode = ViewMode::UnitList;
-                    self.clear_file_search();
-                }
-                KeyCode::Char('e') if !self.unit_file_path.is_empty() => {
-                    if let Some(request) = self.build_edit_request(UnitEditMode::Override) {
-                        self.pending_action = Some(PendingAction::EditFile(request));
-                        return Ok(true);
-                    }
-                }
-                KeyCode::Char('E') if !self.unit_file_path.is_empty() => {
-                    if let Some(request) = self.build_edit_request(UnitEditMode::Full) {
-                        self.pending_action = Some(PendingAction::EditFile(request));
-                        return Ok(true);
-                    }
-                }
-                KeyCode::Char('e') | KeyCode::Char('E') => {}
-                KeyCode::Char('/') if !self.unit_file_content.is_empty() => {
-                    self.start_file_search();
-                }
-                KeyCode::Char('n') if !self.file_search_query.is_empty() => {
-                    self.cycle_file_search_match(true);
-                }
-                KeyCode::Char('N') if !self.file_search_query.is_empty() => {
-                    self.cycle_file_search_match(false);
-                }
-                _ => {}
-            }
-            return Ok(false);
+            return Ok(self.handle_file_view_key(key).await);
         }
 
         if self.is_searching {
@@ -244,31 +60,38 @@ impl App {
             return Ok(false);
         }
 
+        if self.view_mode == ViewMode::UnitList && key.code == KeyCode::Char('q') {
+            return Ok(true);
+        }
+
+        if self.view_mode == ViewMode::UnitList {
+            return Ok(self.handle_unit_list_key(key).await);
+        }
+
         if self.handle_nav_key(key) {
             return Ok(false);
         }
 
         match key.code {
-            KeyCode::Char('q') => Ok(true),
             KeyCode::Char('/') => {
                 self.is_searching = true;
                 self.set_search_cursor_to_end();
                 Ok(false)
             }
             KeyCode::Char('a') => {
-                self.open_filter_menu = Some(FilterMenu::Active);
+                self.open_filter_menu = Some(crate::app::state::FilterMenu::Active);
                 Ok(false)
             }
             KeyCode::Char('n') => {
-                self.open_filter_menu = Some(FilterMenu::Enablement);
+                self.open_filter_menu = Some(crate::app::state::FilterMenu::Enablement);
                 Ok(false)
             }
             KeyCode::Char('o') => {
-                self.open_filter_menu = Some(FilterMenu::Load);
+                self.open_filter_menu = Some(crate::app::state::FilterMenu::Load);
                 Ok(false)
             }
             KeyCode::Char('p') => {
-                self.open_filter_menu = Some(FilterMenu::Scope);
+                self.open_filter_menu = Some(crate::app::state::FilterMenu::Scope);
                 Ok(false)
             }
             KeyCode::Char('l') | KeyCode::Enter => {
@@ -486,7 +309,7 @@ impl App {
             }
             AppInternalEvent::AuthResult(result) => {
                 if let Some(mut flow) = self.embedded_auth.take() {
-                    tokio::task::spawn_blocking(move || {
+                    spawn_blocking(move || {
                         flow.pane.stop();
                     });
                 }
@@ -537,6 +360,8 @@ pub fn unit_command_for_key(key: KeyEvent) -> Option<&'static str> {
 mod tests {
     use super::*;
     use tokio::sync::mpsc;
+
+    use crate::models::PendingAction;
 
     #[test]
     fn unit_command_bindings_match_expected_actions() {

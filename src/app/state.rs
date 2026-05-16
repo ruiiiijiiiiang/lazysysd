@@ -1,10 +1,20 @@
 use std::{
     collections::HashSet,
+    fs,
     io::{Read, Result, Write},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
+use ansi_to_tui::IntoText;
+use crossterm::{
+    event::{KeyCode, KeyEvent},
+    terminal,
+};
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use ratatui::widgets::ListState;
 use tokio::sync::mpsc;
@@ -15,13 +25,14 @@ use crate::{
         UnitInfo,
     },
     systemd::{
-        auth::EmbeddedAuthFlow,
-        dbus::{fetch_all_units, get_unit_fragment_path},
+        auth::{EmbeddedAuthFlow, EmbeddedAuthPane},
+        dbus::{fetch_all_units, get_unit_fragment_path, perform_unit_action},
+        edit::perform_unit_edit,
         journal::JournalManager,
     },
 };
 
-pub const AUTH_START_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+pub const AUTH_START_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ViewMode {
@@ -59,10 +70,18 @@ pub struct FilterMenuOption {
     pub count: usize,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UnitSelectionKey {
+    pub name: String,
+    pub scope: String,
+    pub path: String,
+}
+
 pub struct App {
     pub units: Vec<UnitInfo>,
     pub filtered_units: Vec<usize>,
     pub list_state: ListState,
+    pub selected_unit_key: UnitSelectionKey,
     pub search_query: String,
     pub is_searching: bool,
     pub active_state_filter: Option<String>,
@@ -77,6 +96,10 @@ pub struct App {
     pub unit_file_content: String,
     pub unit_file_path: String,
     pub file_scroll: u16,
+    pub file_search_mode: bool,
+    pub file_search_query: String,
+    pub file_search_cursor: usize,
+    pub file_search_match: Option<usize>,
     pub pending_action: Option<PendingAction>,
     pub pending_edit_review: Option<EditReview>,
 
@@ -88,7 +111,13 @@ pub struct App {
     pub is_loading: bool,
 
     pub visual_select: bool,
+    pub visual_line_select: bool,
+    pub search_cursor: usize,
+    pub log_search_mode: bool,
+    pub log_search_query: String,
+    pub log_search_cursor: usize,
     pub selected_log_lines: HashSet<usize>,
+    pub selected_log_line_marks: Vec<usize>,
     pub pending_nav_prefix: Option<char>,
 }
 
@@ -98,6 +127,7 @@ impl App {
             units: Vec::new(),
             filtered_units: Vec::new(),
             list_state: ListState::default(),
+            selected_unit_key: UnitSelectionKey::default(),
             search_query: String::new(),
             is_searching: false,
             active_state_filter: None,
@@ -112,6 +142,10 @@ impl App {
             unit_file_content: String::new(),
             unit_file_path: String::new(),
             file_scroll: 0,
+            file_search_mode: false,
+            file_search_query: String::new(),
+            file_search_cursor: 0,
+            file_search_match: None,
             pending_action: None,
             pending_edit_review: None,
             embedded_auth: None,
@@ -120,7 +154,13 @@ impl App {
             matcher: SkimMatcherV2::default(),
             is_loading: true,
             visual_select: false,
+            visual_line_select: false,
+            search_cursor: 0,
+            log_search_mode: false,
+            log_search_query: String::new(),
+            log_search_cursor: 0,
             selected_log_lines: HashSet::new(),
+            selected_log_line_marks: Vec::new(),
             pending_nav_prefix: None,
         }
     }
@@ -182,7 +222,7 @@ impl App {
                             .await;
                         return;
                     }
-                    match std::fs::read_to_string(&path) {
+                    match fs::read_to_string(&path) {
                         Ok(content) => {
                             let _ = tx.send(AppInternalEvent::FileLoaded(content, path)).await;
                         }
@@ -241,7 +281,7 @@ impl App {
             }
             None => 0,
         };
-        self.list_state.select(Some(i));
+        self.select_filtered_unit_index(Some(i));
     }
 
     pub fn move_log_selection(&mut self, delta: i32) {
@@ -271,9 +311,16 @@ impl App {
     }
 
     pub fn get_selected_unit(&self) -> Option<&UnitInfo> {
-        self.list_state
-            .selected()
+        self.selected_unit_index()
             .map(|i| &self.units[self.filtered_units[i]])
+    }
+
+    pub fn selected_unit_key_for(unit: &UnitInfo) -> UnitSelectionKey {
+        UnitSelectionKey {
+            name: unit.name.clone(),
+            scope: unit.scope.clone(),
+            path: unit.path.to_string(),
+        }
     }
 
     pub fn build_edit_request(&self, mode: UnitEditMode) -> Option<EditRequest> {
@@ -295,7 +342,7 @@ impl App {
 
     pub async fn trigger_selected_unit_command(&mut self, action: &str) -> Result<()> {
         if let Some(unit) = self.get_selected_unit() {
-            let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+            let (cols, rows) = terminal::size().unwrap_or((80, 24));
             self.start_embedded_auth(
                 PrivilegedAction::UnitCommand {
                     unit_name: unit.name.clone(),
@@ -310,27 +357,39 @@ impl App {
         Ok(())
     }
 
-    pub fn restore_selection(&mut self, selected_unit_name: Option<&str>) {
-        if let Some(unit_name) = selected_unit_name
-            && let Some(index) = self
-                .filtered_units
-                .iter()
-                .position(|&unit_index| self.units[unit_index].name == unit_name)
+    pub fn restore_selection(&mut self, selected_unit_key: Option<&UnitSelectionKey>) {
+        if let Some(unit_key) = selected_unit_key
+            && let Some(index) = self.filtered_units.iter().position(|&unit_index| {
+                let unit = &self.units[unit_index];
+                unit.name == unit_key.name
+                    && unit.scope == unit_key.scope
+                    && unit.path.to_string() == unit_key.path
+            })
         {
-            self.list_state.select(Some(index));
+            self.select_filtered_unit_index(Some(index));
             return;
         }
 
-        if self.list_state.selected().is_none() && !self.filtered_units.is_empty() {
-            self.list_state.select(Some(0));
-        } else if self.filtered_units.is_empty() {
-            self.list_state.select(None);
-        } else if let Some(selected) = self.list_state.selected()
-            && selected >= self.filtered_units.len()
-        {
-            self.list_state
-                .select(Some(self.filtered_units.len().saturating_sub(1)));
+        if self.filtered_units.is_empty() {
+            self.select_filtered_unit_index(None);
+        } else {
+            self.select_filtered_unit_index(Some(0));
         }
+    }
+
+    pub fn selected_unit_index(&self) -> Option<usize> {
+        self.list_state
+            .selected()
+            .filter(|&index| index < self.filtered_units.len())
+    }
+
+    pub fn select_filtered_unit_index(&mut self, index: Option<usize>) {
+        self.list_state.select(index);
+        self.selected_unit_key = index
+            .and_then(|i| self.filtered_units.get(i).copied())
+            .and_then(|unit_index| self.units.get(unit_index))
+            .map(Self::selected_unit_key_for)
+            .unwrap_or_default();
     }
 
     pub fn discard_edit_review(&mut self) {
@@ -338,6 +397,177 @@ impl App {
             self.unit_file_content = review.restore_content;
             self.unit_file_path = review.restore_path;
             self.file_scroll = 0;
+        }
+    }
+
+    pub fn clear_file_search(&mut self) {
+        self.file_search_mode = false;
+        self.file_search_query.clear();
+        self.file_search_cursor = 0;
+        self.file_search_match = None;
+    }
+
+    pub fn start_file_search(&mut self) {
+        self.file_search_mode = true;
+        self.file_search_cursor = self.file_search_query.chars().count();
+        self.file_search_match = None;
+    }
+
+    pub fn file_search_matches(&self) -> Vec<usize> {
+        if self.file_search_query.is_empty() {
+            return Vec::new();
+        }
+
+        self.unit_file_content
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| line.contains(&self.file_search_query))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    pub fn cycle_file_search_match(&mut self, forward: bool) {
+        let matches = self.file_search_matches();
+        if matches.is_empty() {
+            self.file_search_match = None;
+            return;
+        }
+
+        let current = self.file_search_match.unwrap_or(self.file_scroll as usize);
+        let next_index = if forward {
+            matches
+                .iter()
+                .copied()
+                .find(|&index| index > current)
+                .unwrap_or(matches[0])
+        } else {
+            matches
+                .iter()
+                .copied()
+                .rev()
+                .find(|&index| index < current)
+                .unwrap_or(*matches.last().unwrap())
+        };
+
+        self.file_search_match = Some(next_index);
+        self.file_scroll = next_index as u16;
+    }
+
+    pub fn clear_log_visual_modes(&mut self) {
+        self.visual_select = false;
+        self.visual_line_select = false;
+        self.selected_log_lines.clear();
+        self.selected_log_line_marks.clear();
+    }
+
+    pub fn clear_log_search(&mut self) {
+        self.log_search_mode = false;
+        self.log_search_query.clear();
+        self.log_search_cursor = 0;
+    }
+
+    pub fn start_log_search(&mut self) {
+        self.log_search_mode = true;
+        self.log_search_cursor = self.log_search_query.chars().count();
+    }
+
+    pub fn edit_unit_search_key(&mut self, key: KeyEvent) {
+        edit_search_key_impl(key, &mut self.search_query, &mut self.search_cursor);
+    }
+
+    pub fn edit_log_search_key(&mut self, key: KeyEvent) {
+        edit_search_key_impl(key, &mut self.log_search_query, &mut self.log_search_cursor);
+    }
+
+    pub fn edit_file_search_key(&mut self, key: KeyEvent) {
+        edit_search_key_impl(
+            key,
+            &mut self.file_search_query,
+            &mut self.file_search_cursor,
+        );
+    }
+
+    pub fn log_search_matches(&self) -> Vec<usize> {
+        if self.log_search_query.is_empty() {
+            return Vec::new();
+        }
+
+        self.unit_logs
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.contains(&self.log_search_query))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    pub fn cycle_log_search_match(&mut self, forward: bool) {
+        let matches = self.log_search_matches();
+        if matches.is_empty() {
+            return;
+        }
+
+        let current = self.log_state.selected().unwrap_or(0);
+        let next_index = if forward {
+            matches
+                .iter()
+                .copied()
+                .find(|&index| index > current)
+                .unwrap_or(matches[0])
+        } else {
+            matches
+                .iter()
+                .copied()
+                .rev()
+                .find(|&index| index < current)
+                .unwrap_or(*matches.last().unwrap())
+        };
+
+        self.log_state.select(Some(next_index));
+    }
+
+    pub fn toggle_log_line_mark(&mut self) {
+        let Some(index) = self.log_state.selected() else {
+            return;
+        };
+
+        if self.selected_log_line_marks.contains(&index) {
+            self.selected_log_line_marks.retain(|&i| i != index);
+            return;
+        }
+
+        if self.selected_log_line_marks.len() == 2 {
+            self.selected_log_line_marks.remove(0);
+        }
+
+        self.selected_log_line_marks.push(index);
+    }
+
+    pub fn selected_log_line_range(&self) -> Option<(usize, usize)> {
+        match self.selected_log_line_marks.as_slice() {
+            [only] => Some((*only, *only)),
+            [start, end] => Some(((*start).min(*end), (*start).max(*end))),
+            _ => None,
+        }
+    }
+
+    pub fn selected_log_lines_text(&self) -> Option<String> {
+        let (start, end) = self.selected_log_line_range()?;
+        let lines: Vec<&str> = (start..=end)
+            .filter_map(|index| self.unit_logs.get(index).map(|line| line.as_str()))
+            .collect();
+
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
+        }
+    }
+
+    pub fn set_search_cursor_to_end(&mut self) {
+        match self.view_mode {
+            ViewMode::UnitList => self.search_cursor = self.search_query.chars().count(),
+            ViewMode::LogView => self.log_search_cursor = self.log_search_query.chars().count(),
+            ViewMode::FileView => self.file_search_cursor = self.file_search_query.chars().count(),
         }
     }
 
@@ -367,16 +597,15 @@ impl App {
             return Ok(());
         }
 
-        let pane =
-            crate::systemd::auth::EmbeddedAuthPane::spawn(cols, rows, self.internal_tx.clone())?;
-        let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let pane = EmbeddedAuthPane::spawn(cols, rows, self.internal_tx.clone())?;
+        let cancel_flag = Arc::new(AtomicBool::new(false));
         let cancel_clone = Arc::clone(&cancel_flag);
         let tx_clone = self.internal_tx.clone();
         let worker_action = action.clone();
 
         tokio::spawn(async move {
             tokio::time::sleep(AUTH_START_DELAY).await;
-            if cancel_clone.load(std::sync::atomic::Ordering::SeqCst) {
+            if cancel_clone.load(Ordering::SeqCst) {
                 return;
             }
 
@@ -385,29 +614,26 @@ impl App {
                     unit_name,
                     scope,
                     action,
-                } => crate::systemd::dbus::perform_unit_action(&unit_name, &scope, &action).await,
+                } => perform_unit_action(&unit_name, &scope, &action).await,
                 PrivilegedAction::ApplyEdit {
                     unit_name,
                     scope,
                     mode,
                     content,
-                } => {
-                    crate::systemd::edit::perform_unit_edit(&unit_name, &scope, mode, content).await
-                }
+                } => perform_unit_edit(&unit_name, &scope, mode, content).await,
             };
             let _ = tx_clone.send(AppInternalEvent::AuthResult(result)).await;
         });
 
         self.active_privileged_action = Some(action);
-        self.embedded_auth = Some(crate::systemd::auth::EmbeddedAuthFlow { pane, cancel_flag });
+        self.embedded_auth = Some(EmbeddedAuthFlow { pane, cancel_flag });
         Ok(())
     }
 
     pub fn cancel_embedded_auth(&mut self, _reason: &str) {
         self.active_privileged_action = None;
         if let Some(mut flow) = self.embedded_auth.take() {
-            flow.cancel_flag
-                .store(true, std::sync::atomic::Ordering::SeqCst);
+            flow.cancel_flag.store(true, Ordering::SeqCst);
             flow.pane.stop();
         }
     }
@@ -418,6 +644,38 @@ impl App {
         }
         Ok(())
     }
+}
+
+fn edit_search_key_impl(key: KeyEvent, query: &mut String, cursor: &mut usize) {
+    match key.code {
+        KeyCode::Left => {
+            *cursor = cursor.saturating_sub(1);
+        }
+        KeyCode::Right => {
+            *cursor = (*cursor + 1).min(query.chars().count());
+        }
+        KeyCode::Backspace if *cursor > 0 => {
+            let idx = char_to_byte_index(query, *cursor - 1);
+            let end = char_to_byte_index(query, *cursor);
+            query.replace_range(idx..end, "");
+            *cursor -= 1;
+        }
+        KeyCode::Backspace => {}
+        KeyCode::Char(c) => {
+            let idx = char_to_byte_index(query, *cursor);
+            query.insert(idx, c);
+            *cursor += 1;
+        }
+        _ => {}
+    }
+}
+
+fn char_to_byte_index(value: &str, char_index: usize) -> usize {
+    value
+        .char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or_else(|| value.len())
 }
 
 fn build_override_template(unit_name: &str, source_path: &str) -> String {
@@ -434,6 +692,7 @@ fn build_override_template(unit_name: &str, source_path: &str) -> String {
 pub fn copy_to_clipboard(text: &str) -> String {
     let candidates: [(&str, &[&str]); 2] =
         [("wl-copy", &[]), ("xclip", &["-selection", "clipboard"])];
+    let sanitized = strip_ansi_content(text);
     for (cmd, args) in candidates {
         let mut child = match Command::new(cmd)
             .args(args)
@@ -447,12 +706,12 @@ pub fn copy_to_clipboard(text: &str) -> String {
         };
 
         if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(text.as_bytes());
+            let _ = stdin.write_all(sanitized.as_bytes());
         }
 
         match child.wait() {
             Ok(status) if status.success() => {
-                return format!("Copied {} chars to clipboard via {}", text.len(), cmd);
+                return format!("Copied {} chars to clipboard via {}", sanitized.len(), cmd);
             }
             Ok(_) => {
                 let err = child
@@ -473,6 +732,27 @@ pub fn copy_to_clipboard(text: &str) -> String {
         }
     }
     "Clipboard failed: no clipboard tool found".to_string()
+}
+
+pub fn strip_ansi_content(content: &str) -> String {
+    content
+        .lines()
+        .map(|line| match line.as_bytes().into_text() {
+            Ok(text) => text
+                .lines
+                .into_iter()
+                .map(|line| {
+                    line.spans
+                        .into_iter()
+                        .map(|span| span.content.into_owned())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Err(_) => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -544,5 +824,157 @@ mod tests {
         assert!(app.pending_edit_review.is_none());
         assert_eq!(app.unit_file_path, "/usr/lib/systemd/system/ssh.service");
         assert_eq!(app.unit_file_content, "[Service]\nExecStart=/usr/bin/ssh\n");
+    }
+
+    #[test]
+    fn select_filtered_unit_index_tracks_selected_unit_key() {
+        let mut app = test_app(vec![
+            unit(
+                "alpha.service",
+                "Alpha",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/alpha",
+            ),
+            unit(
+                "beta.service",
+                "Beta",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/beta",
+            ),
+        ]);
+
+        app.select_filtered_unit_index(Some(1));
+
+        assert_eq!(app.selected_unit_key.name, "beta.service");
+        assert_eq!(app.selected_unit_key.scope, "global");
+        assert_eq!(app.selected_unit_key.path, "/test/unit/beta");
+        assert_eq!(
+            app.get_selected_unit().map(|unit| unit.name.as_str()),
+            Some("beta.service")
+        );
+    }
+
+    #[test]
+    fn selected_log_line_marks_keep_at_most_two_entries() {
+        let mut app = test_app(vec![unit(
+            "alpha.service",
+            "Alpha",
+            "loaded",
+            "active",
+            "enabled",
+            "/test/unit/alpha",
+        )]);
+        app.unit_logs = vec!["one".to_string(), "two".to_string(), "three".to_string()];
+        app.log_state.select(Some(0));
+
+        app.toggle_log_line_mark();
+        app.log_state.select(Some(1));
+        app.toggle_log_line_mark();
+        app.log_state.select(Some(2));
+        app.toggle_log_line_mark();
+
+        assert_eq!(app.selected_log_line_marks, vec![1, 2]);
+        assert_eq!(app.selected_log_line_range(), Some((1, 2)));
+        assert_eq!(app.selected_log_lines_text().as_deref(), Some("two\nthree"));
+    }
+
+    #[test]
+    fn log_search_helpers_match_exact_text_and_cycle() {
+        let mut app = test_app(vec![unit(
+            "alpha.service",
+            "Alpha",
+            "loaded",
+            "active",
+            "enabled",
+            "/test/unit/alpha",
+        )]);
+        app.unit_logs = vec![
+            "aaa foo aaa".to_string(),
+            "foo bar".to_string(),
+            "bar foo".to_string(),
+            "baz".to_string(),
+        ];
+        app.log_search_query = "foo".to_string();
+
+        assert_eq!(app.log_search_matches(), vec![0, 1, 2]);
+
+        app.log_state.select(Some(0));
+        app.cycle_log_search_match(true);
+        assert_eq!(app.log_state.selected(), Some(1));
+
+        app.cycle_log_search_match(false);
+        assert_eq!(app.log_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn file_search_helpers_match_exact_text_and_cycle() {
+        let mut app = test_app(vec![unit(
+            "alpha.service",
+            "Alpha",
+            "loaded",
+            "active",
+            "enabled",
+            "/test/unit/alpha",
+        )]);
+        app.unit_file_content =
+            "[Service]\nExecStart=/usr/bin/foo\nExecStartPost=/usr/bin/foo --flag\n".to_string();
+        app.file_search_query = "ExecStart".to_string();
+
+        assert_eq!(app.file_search_matches(), vec![1, 2]);
+
+        app.file_scroll = 0;
+        app.cycle_file_search_match(true);
+        assert_eq!(app.file_search_match, Some(1));
+        assert_eq!(app.file_scroll, 1);
+
+        app.cycle_file_search_match(true);
+        assert_eq!(app.file_search_match, Some(2));
+        assert_eq!(app.file_scroll, 2);
+
+        app.cycle_file_search_match(false);
+        assert_eq!(app.file_search_match, Some(1));
+        assert_eq!(app.file_scroll, 1);
+    }
+
+    #[test]
+    fn entering_search_mode_preserves_existing_queries() {
+        let mut app = test_app(vec![unit(
+            "alpha.service",
+            "Alpha",
+            "loaded",
+            "active",
+            "enabled",
+            "/test/unit/alpha",
+        )]);
+
+        app.log_search_query = "foo".to_string();
+        app.log_search_mode = false;
+        app.file_search_query = "bar".to_string();
+        app.file_search_mode = false;
+
+        app.log_search_mode = true;
+        app.file_search_mode = true;
+
+        assert_eq!(app.log_search_query, "foo");
+        assert_eq!(app.file_search_query, "bar");
+    }
+
+    #[test]
+    fn edit_unit_search_key_moves_cursor_and_inserts_text() {
+        let (tx, _rx) = mpsc::channel(1);
+        let mut app = App::blank(tx);
+        app.search_query = "foo".to_string();
+        app.search_cursor = 1;
+
+        app.edit_unit_search_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert_eq!(app.search_cursor, 0);
+
+        app.edit_unit_search_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(app.search_query, "xfoo");
+        assert_eq!(app.search_cursor, 1);
     }
 }

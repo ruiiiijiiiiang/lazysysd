@@ -1,13 +1,11 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Margin, Rect},
-    widgets::{
-        Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-    },
+    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 use crate::{
-    app::state::{App, ViewMode},
+    app::state::{App, FilterMenu, ViewMode},
     ui::components::{
         file_view::draw_file_view, header::draw_unit_header, header::render_filter_menu,
         help::help_text, logs::draw_log_view, modals::render_auth_modal,
@@ -46,30 +44,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .split(frame.area());
 
-    let mut filter_anchors = None;
-
-    if app.view_mode == ViewMode::UnitList {
-        filter_anchors = Some(draw_unit_header(frame, app, main_layout[0]));
-    } else {
-        let title = match app.view_mode {
-            ViewMode::LogView => "Logs",
-            ViewMode::FileView => "Unit File",
-            ViewMode::UnitList => "",
-        };
-        let unit_name = app
-            .list_state
-            .selected()
-            .and_then(|i| app.units.get(app.filtered_units[i]))
-            .map(|u| u.name.as_str())
-            .unwrap_or("Unknown");
-        let header = Block::default()
-            .borders(Borders::ALL)
-            .title(format!(" {}: {} (Esc to back) ", title, unit_name));
-        frame.render_widget(
-            Paragraph::new("Press Esc to return to the unit list").block(header),
-            main_layout[0],
-        );
-    }
+    let filter_anchors = Some(draw_unit_header(frame, app, main_layout[0]));
 
     match app.view_mode {
         ViewMode::UnitList => draw_unit_list(frame, app, main_layout[1]),
@@ -88,10 +63,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         && let Some(menu) = app.open_filter_menu
     {
         let anchor = match menu {
-            crate::app::state::FilterMenu::Scope => scope_rect,
-            crate::app::state::FilterMenu::Active => active_rect,
-            crate::app::state::FilterMenu::Enablement => enablement_rect,
-            crate::app::state::FilterMenu::Load => load_rect,
+            FilterMenu::Scope => scope_rect,
+            FilterMenu::Active => active_rect,
+            FilterMenu::Enablement => enablement_rect,
+            FilterMenu::Load => load_rect,
         };
         render_filter_menu(frame, app, menu, anchor, main_layout[1]);
     }

@@ -28,7 +28,8 @@ pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
             area,
         );
     } else {
-        let lines = highlight_unit_file(&app.unit_file_content);
+        let lines =
+            highlight_unit_file_with_search(&app.unit_file_content, app.file_search_query.as_str());
         let content_length = lines.len();
 
         frame.render_widget(
@@ -43,69 +44,121 @@ pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn highlight_unit_file(content: &str) -> Vec<Line<'static>> {
+fn highlight_unit_file_with_search(content: &str, search_query: &str) -> Vec<Line<'static>> {
     let mut continued_value = false;
 
     content
         .lines()
         .map(|line| {
-            let highlighted = highlight_unit_file_line(line, continued_value);
+            let highlighted =
+                highlight_unit_file_line_with_search(line, continued_value, search_query);
             continued_value = line_continues(line);
             highlighted
         })
         .collect()
 }
 
-fn highlight_unit_file_line(line: &str, continued_value: bool) -> Line<'static> {
+fn highlight_unit_file_line_with_search(
+    line: &str,
+    continued_value: bool,
+    search_query: &str,
+) -> Line<'static> {
     let trimmed = line.trim();
 
     if trimmed.is_empty() {
-        return Line::from(line.to_string());
+        return highlight_exact_matches(Line::from(line.to_string()), search_query);
     }
 
     if trimmed.starts_with('#') || trimmed.starts_with(';') {
-        return Line::from(Span::styled(
-            line.to_string(),
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        ));
+        return highlight_exact_matches(
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            )),
+            search_query,
+        );
     }
 
     if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        return Line::from(Span::styled(
-            line.to_string(),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ));
+        return highlight_exact_matches(
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            search_query,
+        );
     }
 
     if continued_value {
-        return Line::from(Span::styled(
-            line.to_string(),
-            Style::default().fg(Color::White),
-        ));
+        return highlight_exact_matches(
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::White),
+            )),
+            search_query,
+        );
     }
 
     let indent_len = line.len().saturating_sub(line.trim_start().len());
     let (indent, rest) = line.split_at(indent_len);
 
     if let Some((key, value)) = rest.split_once('=') {
-        return Line::from(vec![
-            Span::raw(indent.to_string()),
-            Span::styled(
-                key.to_string(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("=".to_string(), Style::default().fg(Color::DarkGray)),
-            Span::styled(value.to_string(), Style::default().fg(Color::White)),
-        ]);
+        return highlight_exact_matches(
+            Line::from(vec![
+                Span::raw(indent.to_string()),
+                Span::styled(
+                    key.to_string(),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("=".to_string(), Style::default().fg(Color::DarkGray)),
+                Span::styled(value.to_string(), Style::default().fg(Color::White)),
+            ]),
+            search_query,
+        );
     }
 
-    Line::from(line.to_string())
+    highlight_exact_matches(Line::from(line.to_string()), search_query)
+}
+
+fn highlight_exact_matches(line: Line<'static>, query: &str) -> Line<'static> {
+    if query.is_empty() {
+        return line;
+    }
+
+    let mut spans = Vec::new();
+    for span in line.spans {
+        let content = span.content.into_owned();
+        let style = span.style;
+
+        if !content.contains(query) {
+            spans.push(Span::styled(content, style));
+            continue;
+        }
+
+        let mut remaining = content.as_str();
+        while let Some(pos) = remaining.find(query) {
+            let (before, after) = remaining.split_at(pos);
+            if !before.is_empty() {
+                spans.push(Span::styled(before.to_string(), style));
+            }
+            spans.push(Span::styled(
+                query.to_string(),
+                style.bg(Color::Yellow).fg(Color::Black),
+            ));
+            remaining = &after[query.len()..];
+        }
+        if !remaining.is_empty() {
+            spans.push(Span::styled(remaining.to_string(), style));
+        }
+    }
+
+    Line::from(spans)
 }
 
 fn line_continues(line: &str) -> bool {
@@ -119,7 +172,7 @@ mod tests {
 
     #[test]
     fn highlights_key_value_lines() {
-        let line = highlight_unit_file_line("ExecStart=/usr/bin/true", false);
+        let line = highlight_unit_file_line_with_search("ExecStart=/usr/bin/true", false, "");
 
         assert_eq!(line.spans.len(), 4);
         assert_eq!(line.spans[1].content.as_ref(), "ExecStart");
@@ -129,8 +182,8 @@ mod tests {
 
     #[test]
     fn highlights_comments_and_sections() {
-        let comment = highlight_unit_file_line("# docs", false);
-        let section = highlight_unit_file_line("[Service]", false);
+        let comment = highlight_unit_file_line_with_search("# docs", false, "");
+        let section = highlight_unit_file_line_with_search("[Service]", false, "");
 
         assert_eq!(comment.spans[0].style.fg, Some(Color::DarkGray));
         assert_eq!(section.spans[0].style.fg, Some(Color::Cyan));
@@ -138,7 +191,10 @@ mod tests {
 
     #[test]
     fn treats_continued_lines_as_values() {
-        let lines = highlight_unit_file("ExecStart=/usr/bin/foo \\\n    --flag");
+        let lines = highlight_unit_file_with_search(
+            concat!("ExecStart=/usr/bin/foo \\", "\n    --flag"),
+            "",
+        );
 
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[1].spans[0].style.fg, Some(Color::White));

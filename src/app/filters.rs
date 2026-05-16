@@ -1,7 +1,9 @@
 use std::collections::{BTreeSet, HashSet};
 
-use crate::app::state::{App, FilterMenu, FilterMenuOption};
-use crate::models::UnitInfo;
+use crate::{
+    app::state::{App, FilterMenu, FilterMenuOption, UnitSelectionKey},
+    models::UnitInfo,
+};
 
 impl FilterMenu {
     pub fn title(self) -> &'static str {
@@ -133,7 +135,11 @@ impl FilterMenu {
 
 impl App {
     pub fn update_filter(&mut self) {
-        let selected_unit_name = self.get_selected_unit().map(|unit| unit.name.clone());
+        let selected_unit_key = if self.selected_unit_key == UnitSelectionKey::default() {
+            None
+        } else {
+            Some(self.selected_unit_key.clone())
+        };
 
         if self.search_query.is_empty() {
             self.filtered_units = self
@@ -143,6 +149,8 @@ impl App {
                 .filter(|(_, unit)| self.unit_matches_state_filters(unit))
                 .map(|(index, _)| index)
                 .collect();
+            self.filtered_units
+                .sort_by_key(|&index| self.units[index].name.to_ascii_lowercase());
         } else {
             let mut scored: Vec<(usize, i64)> = self
                 .units
@@ -151,11 +159,18 @@ impl App {
                 .filter(|(_, unit)| self.unit_matches_state_filters(unit))
                 .filter_map(|(index, unit)| self.search_score(unit).map(|score| (index, score)))
                 .collect();
-            scored.sort_by_key(|&(_, score)| -score);
+            scored.sort_by(|(left_index, left_score), (right_index, right_score)| {
+                right_score.cmp(left_score).then_with(|| {
+                    self.units[*left_index]
+                        .name
+                        .to_ascii_lowercase()
+                        .cmp(&self.units[*right_index].name.to_ascii_lowercase())
+                })
+            });
             self.filtered_units = scored.into_iter().map(|(index, _)| index).collect();
         }
 
-        self.restore_selection(selected_unit_name.as_deref());
+        self.restore_selection(selected_unit_key.as_ref());
     }
 
     pub fn filter_summary(&self, menu: FilterMenu) -> &str {
@@ -367,6 +382,177 @@ mod tests {
         app.update_filter();
 
         assert_eq!(filtered_names(&app), vec!["broken.service"]);
+    }
+
+    #[test]
+    fn update_filter_sorts_units_by_name() {
+        let app = test_app(vec![
+            unit(
+                "Zebra.service",
+                "Zebra",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/zebra_upper",
+            ),
+            unit(
+                "zeta.service",
+                "Zeta",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/zeta",
+            ),
+            unit(
+                "Alpha.service",
+                "Alpha",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/alpha_upper",
+            ),
+            unit(
+                "beta.service",
+                "Beta",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/beta",
+            ),
+        ]);
+
+        assert_eq!(
+            filtered_names(&app),
+            vec![
+                "Alpha.service",
+                "beta.service",
+                "Zebra.service",
+                "zeta.service"
+            ]
+        );
+    }
+
+    #[test]
+    fn update_filter_restores_selection_by_unit_name_after_resort() {
+        let mut app = test_app(vec![
+            unit(
+                "zeta.service",
+                "Zeta",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/zeta",
+            ),
+            unit(
+                "alpha.service",
+                "Alpha",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/alpha",
+            ),
+            unit(
+                "beta.service",
+                "Beta",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/beta",
+            ),
+        ]);
+
+        app.select_filtered_unit_index(Some(2));
+        assert_eq!(app.selected_unit_key.name, "zeta.service");
+
+        app.search_query = "zeta".to_string();
+        app.update_filter();
+
+        assert_eq!(filtered_names(&app), vec!["zeta.service"]);
+        assert_eq!(app.selected_unit_key.name, "zeta.service");
+        assert_eq!(app.selected_unit_index(), Some(0));
+    }
+
+    #[test]
+    fn update_filter_uses_stored_unit_name_when_list_state_is_stale() {
+        let mut app = test_app(vec![
+            unit(
+                "alpha.service",
+                "Alpha",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/alpha",
+            ),
+            unit(
+                "beta.service",
+                "Beta",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/beta",
+            ),
+            unit(
+                "gamma.service",
+                "Gamma",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/gamma",
+            ),
+        ]);
+
+        app.selected_unit_key = UnitSelectionKey {
+            name: "gamma.service".to_string(),
+            scope: "global".to_string(),
+            path: "/test/unit/gamma".to_string(),
+        };
+        app.list_state.select(Some(0));
+
+        app.update_filter();
+
+        assert_eq!(app.selected_unit_key.name, "gamma.service");
+        assert_eq!(app.selected_unit_index(), Some(2));
+    }
+
+    #[test]
+    fn update_filter_restores_duplicate_units_by_composite_key() {
+        let mut app = test_app(vec![
+            unit(
+                "dup.service",
+                "First",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/dup_a",
+            ),
+            unit(
+                "dup.service",
+                "Second",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/dup_b",
+            ),
+            unit(
+                "other.service",
+                "Other",
+                "loaded",
+                "active",
+                "enabled",
+                "/test/unit/other",
+            ),
+        ]);
+
+        app.select_filtered_unit_index(Some(1));
+        assert_eq!(app.selected_unit_key.path, "/test/unit/dup_b");
+
+        app.update_filter();
+
+        assert_eq!(app.selected_unit_key.path, "/test/unit/dup_b");
+        assert_eq!(
+            app.get_selected_unit().map(|unit| unit.path.to_string()),
+            Some("/test/unit/dup_b".to_string())
+        );
     }
 
     #[test]

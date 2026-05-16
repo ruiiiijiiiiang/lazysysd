@@ -2,8 +2,10 @@ use std::{
     collections::HashMap,
     io::{Error, Result},
     path::Path,
+    sync::{Mutex, OnceLock},
 };
 
+use futures::{StreamExt, stream};
 use serde::Deserialize;
 use zbus::{
     Connection, Result as ZbusResult,
@@ -30,6 +32,8 @@ pub struct UnitRow {
 type UnitFileState = (String, String);
 type UnitFileChange = (String, String, String);
 type UnitFileChanges = Vec<UnitFileChange>;
+
+static ENABLEMENT_STATE_CACHE: OnceLock<Mutex<HashMap<(String, String), String>>> = OnceLock::new();
 
 #[proxy(
     interface = "org.freedesktop.systemd1.Manager",
@@ -143,30 +147,55 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
             .map_err(|e| Error::other(format!("list_unit_files failed: {e}")))?,
     );
 
-    use futures::{StreamExt, stream};
+    let scope_name = scope.to_string();
+    let mut units = Vec::with_capacity(units_raw.len());
+    let mut unresolved_units = Vec::new();
 
-    let units = stream::iter(units_raw)
-        .map(|u| {
-            let manager = &manager;
-            let unit_file_states = &unit_file_states;
-            async move {
-                let enablement_state =
-                    resolve_enablement_state(manager, &u.name, unit_file_states).await;
-                UnitInfo {
-                    name: u.name,
-                    description: u.description,
-                    scope: scope.to_string(),
-                    load_state: u.load_state,
-                    active_state: u.active_state,
-                    enablement_state,
-                    sub_state: u.sub_state,
-                    path: u.path,
-                }
+    for unit in units_raw {
+        if let Some(enablement_state) = resolve_enablement_state_cached(
+            &scope_name,
+            &unit.name,
+            &unit_file_states,
+        ) {
+            units.push(UnitInfo {
+                name: unit.name,
+                description: unit.description,
+                scope: scope_name.clone(),
+                load_state: unit.load_state,
+                active_state: unit.active_state,
+                enablement_state,
+                sub_state: unit.sub_state,
+                path: unit.path,
+            });
+        } else {
+            unresolved_units.push(unit);
+        }
+    }
+
+    let resolved_units = stream::iter(unresolved_units.into_iter().map(|unit| {
+        let manager = &manager;
+        let unit_file_states = &unit_file_states;
+        let scope = scope_name.clone();
+        async move {
+            let enablement_state =
+                resolve_enablement_state(manager, &scope, &unit.name, unit_file_states).await;
+            UnitInfo {
+                name: unit.name,
+                description: unit.description,
+                scope,
+                load_state: unit.load_state,
+                active_state: unit.active_state,
+                enablement_state,
+                sub_state: unit.sub_state,
+                path: unit.path,
             }
-        })
-        .buffer_unordered(10)
-        .collect::<Vec<_>>()
-        .await;
+        }
+    }))
+    .buffer_unordered(10)
+    .collect::<Vec<_>>()
+    .await;
+
+    units.extend(resolved_units);
 
     Ok(units)
 }
@@ -186,6 +215,8 @@ async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResu
     };
     let manager = SystemdManagerProxy::new(&connection).await?;
 
+    let mut invalidate_enablement_cache = false;
+
     match action {
         "start" => {
             manager.start_unit(name, "replace").await?;
@@ -203,25 +234,33 @@ async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResu
             manager
                 .enable_unit_files(vec![name.to_string()], false, true)
                 .await?;
+            invalidate_enablement_cache = true;
         }
         "disable" => {
             manager
                 .disable_unit_files(vec![name.to_string()], false)
                 .await?;
+            invalidate_enablement_cache = true;
         }
         "mask" => {
             manager
                 .mask_unit_files(vec![name.to_string()], false, true)
                 .await?;
+            invalidate_enablement_cache = true;
         }
         "unmask" => {
             manager
                 .unmask_unit_files(vec![name.to_string()], false)
                 .await?;
+            invalidate_enablement_cache = true;
         }
         _ => {
             return Ok(AttemptResult { success: false });
         }
+    }
+
+    if invalidate_enablement_cache {
+        clear_enablement_state_cache();
     }
 
     Ok(AttemptResult { success: true })
@@ -249,6 +288,57 @@ fn find_cached_unit_file_state(
     })
 }
 
+fn enablement_state_cache() -> &'static Mutex<HashMap<(String, String), String>> {
+    ENABLEMENT_STATE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn clear_enablement_state_cache() {
+    let mut cache = enablement_state_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.clear();
+}
+
+fn cache_enablement_state(scope: &str, unit_name: &str, state: &str) {
+    let mut cache = enablement_state_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.insert((scope.to_string(), unit_name.to_string()), state.to_string());
+}
+
+fn cached_enablement_state(scope: &str, unit_name: &str) -> Option<String> {
+    let cache = enablement_state_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.get(&(scope.to_string(), unit_name.to_string())).cloned()
+}
+
+fn unit_has_file(unit_name: &str) -> bool {
+    unit_name.ends_with(".service")
+        || unit_name.ends_with(".socket")
+        || unit_name.ends_with(".timer")
+        || unit_name.ends_with(".mount")
+        || unit_name.ends_with(".automount")
+        || unit_name.ends_with(".path")
+        || unit_name.ends_with(".swap")
+}
+
+fn resolve_enablement_state_cached(
+    scope: &str,
+    unit_name: &str,
+    unit_file_states: &HashMap<String, String>,
+) -> Option<String> {
+    if let Some(state) = find_cached_unit_file_state(unit_name, unit_file_states) {
+        return Some(state);
+    }
+
+    if !unit_has_file(unit_name) {
+        return Some("static".to_string());
+    }
+
+    cached_enablement_state(scope, unit_name)
+}
+
 fn template_unit_name(unit_name: &str) -> Option<String> {
     let (stem, suffix) = unit_name.rsplit_once('.')?;
     let (template, _) = stem.split_once('@')?;
@@ -257,27 +347,19 @@ fn template_unit_name(unit_name: &str) -> Option<String> {
 
 async fn resolve_enablement_state(
     manager: &SystemdManagerProxy<'_>,
+    scope: &str,
     unit_name: &str,
     unit_file_states: &HashMap<String, String>,
 ) -> String {
-    if let Some(state) = find_cached_unit_file_state(unit_name, unit_file_states) {
+    if let Some(state) = resolve_enablement_state_cached(scope, unit_name, unit_file_states) {
         return state;
     }
 
-    let has_file = unit_name.ends_with(".service")
-        || unit_name.ends_with(".socket")
-        || unit_name.ends_with(".timer")
-        || unit_name.ends_with(".mount")
-        || unit_name.ends_with(".automount")
-        || unit_name.ends_with(".path")
-        || unit_name.ends_with(".swap");
-
-    if !has_file {
-        return "static".to_string();
-    }
-
-    manager
+    let state = manager
         .get_unit_file_state(unit_name)
         .await
         .unwrap_or_else(|_| "transient".to_string())
+        ;
+    cache_enablement_state(scope, unit_name, &state);
+    state
 }

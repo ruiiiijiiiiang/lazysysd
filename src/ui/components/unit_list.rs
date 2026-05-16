@@ -10,6 +10,7 @@ use crate::{app::state::App, models::UnitInfo, ui::render::render_scrollbar};
 
 pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
     app.last_area_height = area.height.saturating_sub(2);
+    let content_width = area.width.saturating_sub(2) as usize;
     let list_block = Block::default().borders(Borders::ALL).title(format!(
         " Units ({}/{}) ",
         app.filtered_units.len(),
@@ -25,12 +26,19 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
         );
     } else {
         let column_widths = unit_row_column_widths(area.width.saturating_sub(2));
+        let selected_index = app.selected_unit_index();
         let items: Vec<ListItem> = app
             .filtered_units
             .iter()
-            .map(|&i| {
+            .enumerate()
+            .map(|(visible_index, &i)| {
                 let unit = &app.units[i];
-                ListItem::new(format_unit_row(unit, &column_widths))
+                ListItem::new(format_unit_row(
+                    unit,
+                    &column_widths,
+                    content_width,
+                    selected_index == Some(visible_index),
+                ))
             })
             .collect();
 
@@ -45,15 +53,20 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
         render_scrollbar(
             frame,
             area,
-            app.list_state.selected().unwrap_or(0),
+            selected_index.unwrap_or(0),
             app.filtered_units.len(),
         );
     }
 }
 
-fn format_unit_row(unit: &UnitInfo, widths: &[usize; 5]) -> Line<'static> {
+fn format_unit_row(
+    unit: &UnitInfo,
+    widths: &[usize; 5],
+    content_width: usize,
+    is_selected: bool,
+) -> Vec<Line<'static>> {
     let active_sub = format!("{} ({})", unit.active_state, unit.sub_state);
-    Line::from(vec![
+    let mut lines = vec![Line::from(vec![
         Span::styled(
             format_cell(&unit.name, widths[0], CellAlign::Left),
             Style::default().add_modifier(Modifier::BOLD),
@@ -74,7 +87,17 @@ fn format_unit_row(unit: &UnitInfo, widths: &[usize; 5]) -> Line<'static> {
             format_cell(&unit.load_state, widths[4], CellAlign::Center),
             Style::default().fg(load_state_color(&unit.load_state)),
         ),
-    ])
+    ])];
+
+    if is_selected {
+        let detail = format!("⤷ {}  {}", unit.description, unit.path);
+        lines.push(Line::from(Span::styled(
+            clip_text(&detail, content_width),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    lines
 }
 
 fn unit_row_column_widths(total_width: u16) -> [usize; 5] {
@@ -177,4 +200,32 @@ fn clip_text(value: &str, width: usize) -> String {
     let mut clipped: String = value.chars().take(width - 3).collect();
     clipped.push_str("...");
     clipped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::UnitInfo;
+    use zbus::zvariant::OwnedObjectPath;
+
+    fn unit() -> UnitInfo {
+        UnitInfo {
+            name: "ssh.service".to_string(),
+            description: "Secure Shell".to_string(),
+            scope: "global".to_string(),
+            load_state: "loaded".to_string(),
+            active_state: "active".to_string(),
+            enablement_state: "enabled".to_string(),
+            sub_state: "running".to_string(),
+            path: OwnedObjectPath::try_from("/test/unit/ssh").unwrap(),
+        }
+    }
+
+    #[test]
+    fn selected_row_gets_two_lines_with_detail_prefix() {
+        let lines = format_unit_row(&unit(), &[10, 10, 10, 10, 10], 80, true);
+
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].spans[0].content.starts_with('⤷'));
+    }
 }

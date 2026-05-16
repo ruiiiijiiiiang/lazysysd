@@ -85,4 +85,5 @@ pub enum AppInternalEvent {
 
 pub enum PendingAction {
     EditFile(EditRequest),
+    EditText { filename: String, content: String },
 }

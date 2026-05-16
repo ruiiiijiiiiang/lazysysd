@@ -23,17 +23,34 @@ pub fn help_text(app: &App) -> Vec<Line<'static>> {
             }
         }
         ViewMode::LogView => {
-            if app.visual_select {
+            if app.log_search_mode {
+                vec!["Esc: Clear", "Enter: Keep", "n/N: Next/Prev"]
+            } else if !app.log_search_query.is_empty() {
+                vec![
+                    "Esc/q: Back",
+                    "Ctrl+r: Refresh",
+                    "v: Select",
+                    "V/e: Line/Text editor",
+                    "n/N: Next/Prev",
+                    "/: Search",
+                ]
+            } else if app.visual_line_select {
+                vec!["Esc: Cancel", "j/k: Move", "Space: Mark", "y/Enter: Yank"]
+            } else if app.visual_select {
                 vec!["Esc: Cancel", "j/k: Move", "Space: Toggle", "y/Enter: Yank"]
             } else {
-                vec!["Esc/q: Back", "Ctrl+r: Refresh", "v: Select"]
+                vec!["Esc/q: Back", "Ctrl+r: Refresh", "v: Select", "V/e: Line/Text editor"]
             }
         }
         ViewMode::FileView => {
-            if app.pending_edit_review.is_some() {
+            if app.file_search_mode {
+                vec!["Esc: Clear", "Enter: Keep", "n/N: Next/Prev"]
+            } else if !app.file_search_query.is_empty() {
+                vec!["Esc/q: Back", "e/E: Edit", "n/N: Next/Prev", "/: Search"]
+            } else if app.pending_edit_review.is_some() {
                 vec!["a/Enter: Apply", "d/Esc/q: Discard"]
             } else {
-                vec!["Esc/q: Back", "e: Override", "E: Replace"]
+                vec!["Esc/q: Back", "e: Override", "E: Replace", "/: Search"]
             }
         }
     };

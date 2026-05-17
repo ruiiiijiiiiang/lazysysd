@@ -5,7 +5,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::state::{App, FilterMenu, ViewMode},
+    app::state::context::{App, FilterMenu, ViewMode},
     ui::components::{
         file_view::draw_file_view, header::draw_unit_header, header::render_filter_menu,
         help::draw_help, log_view::draw_log_view, modals::render_auth_modal,
@@ -37,12 +37,17 @@ pub fn render_scrollbar(frame: &mut Frame, area: Rect, position: usize, content_
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    let area = frame.area();
+    app.terminal_size = (area.width, area.height);
+
     let main_layout = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(10),
         Constraint::Length(6),
     ])
     .split(frame.area());
+
+    app.main_content_height = main_layout[1].height.saturating_sub(2);
 
     let filter_anchors = Some(draw_unit_header(frame, app, main_layout[0]));
 

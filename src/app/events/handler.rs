@@ -1,13 +1,10 @@
 use std::io::Result;
 
-use crossterm::{
-    event::{KeyCode, KeyEvent, KeyModifiers},
-    terminal,
-};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    app::state::{App, SearchInputAction, ViewMode},
-    models::PrivilegedAction,
+    app::state::context::{App, SearchInputAction, ViewMode},
+    models::{PrivilegedAction, UnitAction},
 };
 
 impl App {
@@ -102,17 +99,12 @@ impl App {
             }
             KeyCode::Char('a') | KeyCode::Enter => {
                 if let Some(review) = self.pending_edit_review.as_ref() {
-                    let (cols, rows) = terminal::size().unwrap_or((80, 24));
-                    self.start_embedded_auth(
-                        PrivilegedAction::ApplyEdit {
-                            unit_name: review.unit_name.clone(),
-                            scope: review.scope.clone(),
-                            mode: review.mode,
-                            content: review.edited_content.clone(),
-                        },
-                        cols,
-                        rows,
-                    )
+                    self.start_embedded_auth(PrivilegedAction::ApplyEdit {
+                        unit_name: review.unit_name.clone(),
+                        scope: review.scope.clone(),
+                        mode: review.mode,
+                        content: review.edited_content.clone(),
+                    })
                     .await?;
                 }
             }
@@ -123,20 +115,21 @@ impl App {
     }
 }
 
-pub fn unit_command_for_key(key: KeyEvent) -> Option<&'static str> {
+pub fn unit_command_for_key(key: KeyEvent) -> Option<UnitAction> {
     if !(key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT) {
         return None;
     }
 
     match key.code {
-        KeyCode::Char('s') => Some("start"),
-        KeyCode::Char('t') => Some("stop"),
-        KeyCode::Char('r') => Some("restart"),
-        KeyCode::Char('R') => Some("reload"),
-        KeyCode::Char('e') => Some("enable"),
-        KeyCode::Char('d') => Some("disable"),
-        KeyCode::Char('m') => Some("mask"),
-        KeyCode::Char('u') => Some("unmask"),
+        KeyCode::Char('s') => Some(UnitAction::Start),
+        KeyCode::Char('t') => Some(UnitAction::Stop),
+        KeyCode::Char('r') => Some(UnitAction::Restart),
+        KeyCode::Char('R') => Some(UnitAction::Reload),
+        KeyCode::Char('e') => Some(UnitAction::Enable),
+        KeyCode::Char('d') => Some(UnitAction::Disable),
+        KeyCode::Char('m') => Some(UnitAction::Mask),
+        KeyCode::Char('u') => Some(UnitAction::Unmask),
+        KeyCode::Char('x') => Some(UnitAction::ResetFailed),
         _ => None,
     }
 }
@@ -152,35 +145,35 @@ mod tests {
     fn unit_command_bindings_match_expected_actions() {
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
-            Some("start")
+            Some(UnitAction::Start)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE)),
-            Some("stop")
+            Some(UnitAction::Stop)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
-            Some("restart")
+            Some(UnitAction::Restart)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('R'), KeyModifiers::SHIFT)),
-            Some("reload")
+            Some(UnitAction::Reload)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE)),
-            Some("enable")
+            Some(UnitAction::Enable)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE)),
-            Some("disable")
+            Some(UnitAction::Disable)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE)),
-            Some("mask")
+            Some(UnitAction::Mask)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE)),
-            Some("unmask")
+            Some(UnitAction::Unmask)
         );
         assert_eq!(
             unit_command_for_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL)),

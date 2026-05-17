@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::state::{App, NavAction, Navigable, ViewMode};
+use crate::app::state::context::{App, NavAction};
 
 impl App {
     pub fn handle_nav_key(&mut self, key: KeyEvent) -> bool {
@@ -40,16 +40,6 @@ impl App {
             true
         } else {
             false
-        }
-    }
-
-    pub fn perform_nav(&mut self, action: NavAction) {
-        let height = self.last_area_height;
-
-        match self.view_mode {
-            ViewMode::UnitList => self.unit_list.navigate(action, height),
-            ViewMode::LogView => self.log_view.navigate(action, height),
-            ViewMode::FileView => self.file_view.navigate(action, height),
         }
     }
 }

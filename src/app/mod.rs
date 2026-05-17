@@ -1,6 +1,5 @@
 pub mod auth;
 pub mod events;
 pub mod filters;
-pub mod search;
-pub mod selection;
 pub mod state;
+pub mod utils;

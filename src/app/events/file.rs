@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::{
-    app::state::App,
+    app::state::context::App,
     models::{PendingAction, UnitEditMode},
 };
 

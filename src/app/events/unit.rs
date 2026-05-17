@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::{
     events::handler::unit_command_for_key,
-    state::{App, FilterMenu},
+    state::context::{App, FilterMenu},
 };
 
 impl App {

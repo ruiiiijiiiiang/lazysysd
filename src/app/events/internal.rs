@@ -1,7 +1,7 @@
 use tokio::task::spawn_blocking;
 
 use crate::{
-    app::state::{App, ViewMode},
+    app::state::context::{App, ViewMode},
     models::{AppInternalEvent, PrivilegedAction},
 };
 
@@ -16,7 +16,8 @@ impl App {
             AppInternalEvent::LogsLoaded(logs) => {
                 self.log_view.logs = logs;
                 self.is_loading = false;
-                self.log_view.state
+                self.log_view
+                    .state
                     .select(Some(self.log_view.logs.len().saturating_sub(1)));
             }
             AppInternalEvent::FileLoaded(content, path) => {

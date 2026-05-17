@@ -54,12 +54,25 @@ pub struct EditReview {
     pub restore_path: String,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum UnitAction {
+    Start,
+    Stop,
+    Restart,
+    Reload,
+    Enable,
+    Disable,
+    Mask,
+    Unmask,
+    ResetFailed,
+}
+
 #[derive(Debug, Clone)]
 pub enum PrivilegedAction {
     UnitCommand {
         unit_name: String,
         scope: String,
-        action: String,
+        action: UnitAction,
     },
     ApplyEdit {
         unit_name: String,

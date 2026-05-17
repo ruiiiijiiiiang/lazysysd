@@ -2,13 +2,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::task::spawn_blocking;
 
 use crate::{
-    app::state::{App, copy_to_clipboard},
+    app::{state::context::App, utils::copy_to_clipboard},
     models::PendingAction,
 };
 
 impl App {
     pub async fn handle_log_view_key(&mut self, key: KeyEvent) -> bool {
-
         if self.log_view.visual_line_select {
             if self.handle_nav_key(key) {
                 return false;

@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::{app::state::App, ui::render::render_scrollbar};
+use crate::{app::state::context::App, ui::render::render_scrollbar};
 
 pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()

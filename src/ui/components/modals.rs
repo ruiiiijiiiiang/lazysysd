@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::{models::EditReview, systemd::auth::EmbeddedAuthFlow};
+use crate::{app::auth::EmbeddedAuthFlow, models::EditReview};
 
 pub fn render_edit_review_modal(frame: &mut Frame, review: &EditReview) {
     let area = centered_rect(72, 38, frame.area());

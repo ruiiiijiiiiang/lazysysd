@@ -13,7 +13,7 @@ use zbus::{
     {proxy, zvariant::OwnedObjectPath},
 };
 
-use crate::models::{AttemptResult, UnitInfo};
+use crate::models::{AttemptResult, UnitAction, UnitInfo};
 
 #[derive(Debug, Deserialize, Type)]
 pub struct UnitRow {
@@ -54,6 +54,8 @@ trait SystemdManager {
     fn restart_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
     #[zbus(allow_interactive_auth)]
     fn reload_unit(&self, name: &str, mode: &str) -> ZbusResult<OwnedObjectPath>;
+    #[zbus(name = "ResetFailedUnit", allow_interactive_auth)]
+    fn reset_failed(&self, name: &str) -> ZbusResult<()>;
     #[zbus(allow_interactive_auth)]
     fn enable_unit_files(
         &self,
@@ -152,11 +154,9 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
     let mut unresolved_units = Vec::new();
 
     for unit in units_raw {
-        if let Some(enablement_state) = resolve_enablement_state_cached(
-            &scope_name,
-            &unit.name,
-            &unit_file_states,
-        ) {
+        if let Some(enablement_state) =
+            resolve_enablement_state_cached(&scope_name, &unit.name, &unit_file_states)
+        {
             units.push(UnitInfo {
                 name: unit.name,
                 description: unit.description,
@@ -200,14 +200,18 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
     Ok(units)
 }
 
-pub async fn perform_unit_action(name: &str, scope: &str, action: &str) -> AttemptResult {
+pub async fn perform_unit_action(name: &str, scope: &str, action: UnitAction) -> AttemptResult {
     match run_dbus_unit_action(name, scope, action).await {
         Ok(res) => res,
         Err(_) => AttemptResult { success: false },
     }
 }
 
-async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResult<AttemptResult> {
+async fn run_dbus_unit_action(
+    name: &str,
+    scope: &str,
+    action: UnitAction,
+) -> ZbusResult<AttemptResult> {
     let connection = if scope == "session" {
         Connection::session().await?
     } else {
@@ -218,44 +222,44 @@ async fn run_dbus_unit_action(name: &str, scope: &str, action: &str) -> ZbusResu
     let mut invalidate_enablement_cache = false;
 
     match action {
-        "start" => {
+        UnitAction::Start => {
             manager.start_unit(name, "replace").await?;
         }
-        "stop" => {
+        UnitAction::Stop => {
             manager.stop_unit(name, "replace").await?;
         }
-        "restart" => {
+        UnitAction::Restart => {
             manager.restart_unit(name, "replace").await?;
         }
-        "reload" => {
+        UnitAction::Reload => {
             manager.reload_unit(name, "replace").await?;
         }
-        "enable" => {
+        UnitAction::ResetFailed => {
+            manager.reset_failed(name).await?;
+        }
+        UnitAction::Enable => {
             manager
                 .enable_unit_files(vec![name.to_string()], false, true)
                 .await?;
             invalidate_enablement_cache = true;
         }
-        "disable" => {
+        UnitAction::Disable => {
             manager
                 .disable_unit_files(vec![name.to_string()], false)
                 .await?;
             invalidate_enablement_cache = true;
         }
-        "mask" => {
+        UnitAction::Mask => {
             manager
                 .mask_unit_files(vec![name.to_string()], false, true)
                 .await?;
             invalidate_enablement_cache = true;
         }
-        "unmask" => {
+        UnitAction::Unmask => {
             manager
                 .unmask_unit_files(vec![name.to_string()], false)
                 .await?;
             invalidate_enablement_cache = true;
-        }
-        _ => {
-            return Ok(AttemptResult { success: false });
         }
     }
 
@@ -303,14 +307,19 @@ fn cache_enablement_state(scope: &str, unit_name: &str, state: &str) {
     let mut cache = enablement_state_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.insert((scope.to_string(), unit_name.to_string()), state.to_string());
+    cache.insert(
+        (scope.to_string(), unit_name.to_string()),
+        state.to_string(),
+    );
 }
 
 fn cached_enablement_state(scope: &str, unit_name: &str) -> Option<String> {
     let cache = enablement_state_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.get(&(scope.to_string(), unit_name.to_string())).cloned()
+    cache
+        .get(&(scope.to_string(), unit_name.to_string()))
+        .cloned()
 }
 
 fn unit_has_file(unit_name: &str) -> bool {
@@ -358,8 +367,7 @@ async fn resolve_enablement_state(
     let state = manager
         .get_unit_file_state(unit_name)
         .await
-        .unwrap_or_else(|_| "transient".to_string())
-        ;
+        .unwrap_or_else(|_| "transient".to_string());
     cache_enablement_state(scope, unit_name, &state);
     state
 }

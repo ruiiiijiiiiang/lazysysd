@@ -7,13 +7,12 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
-use crate::{app::state::App, ui::render::render_scrollbar};
+use crate::{app::state::context::App, ui::render::render_scrollbar};
 
 pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Journal Logs ");
-    app.last_area_height = area.height.saturating_sub(2);
 
     if app.is_loading && app.log_view.logs.is_empty() {
         frame.render_widget(
@@ -31,7 +30,8 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
         let line_range = app.selected_log_line_range();
         let search_query = app.search.query.clone();
         let items: Vec<ListItem> = app
-            .log_view.logs
+            .log_view
+            .logs
             .iter()
             .enumerate()
             .map(|(i, line)| {

@@ -6,10 +6,9 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
-use crate::{app::state::App, models::UnitInfo, ui::render::render_scrollbar};
+use crate::{app::state::context::App, models::UnitInfo, ui::render::render_scrollbar};
 
 pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
-    app.last_area_height = area.height.saturating_sub(2);
     let content_width = area.width.saturating_sub(2) as usize;
     let list_block = Block::default().borders(Borders::ALL).title(format!(
         " Units ({}/{}) ",
@@ -28,7 +27,8 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
         let column_widths = unit_row_column_widths(area.width.saturating_sub(2));
         let selected_index = app.selected_unit_index();
         let items: Vec<ListItem> = app
-            .unit_list.filtered_indices
+            .unit_list
+            .filtered_indices
             .iter()
             .enumerate()
             .map(|(visible_index, &i)| {
@@ -98,34 +98,101 @@ fn format_unit_row(
         ]);
         lines.push(clip_line(detail, content_width));
 
-        let actions = Line::from(vec![
-            Span::raw(" ╙  "),
-            Span::styled("Actions: ", Style::default().bold()),
-            Span::styled("l", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" logs   "),
+        let actions_col0 = vec![
+            Span::styled("l/Enter", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" logs  "),
             Span::styled("f", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" unit file   "),
+            Span::raw(" unit file"),
+        ];
+
+        let actions_col2 = vec![
             Span::styled("s", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" start   "),
+            Span::raw(" start "),
             Span::styled("t", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" stop   "),
+            Span::raw(" stop "),
             Span::styled("r", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" restart   "),
-            Span::styled("R", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" reload   "),
+            Span::raw(" restart"),
+        ];
+
+        let actions_col3 = vec![
             Span::styled("e", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" enable   "),
+            Span::raw(" enable "),
             Span::styled("d", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" disable   "),
+            Span::raw(" disable "),
             Span::styled("m", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" mask   "),
+            Span::raw(" mask "),
             Span::styled("u", Style::default().fg(Color::Cyan).bold()),
             Span::raw(" unmask"),
-        ]);
+        ];
+
+        let actions_col4 = vec![
+            Span::styled("R", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" reload "),
+            Span::styled("x", Style::default().fg(Color::Cyan).bold()),
+            Span::raw(" reset-failed"),
+        ];
+
+        let mut actions_spans = vec![
+            Span::raw(" ╙  "),
+            Span::styled("Action: ", Style::default().bold()),
+        ];
+
+        let prefix_len = " ╙  Action: ".len();
+        actions_spans.extend(format_spans_cell(
+            actions_col0,
+            widths[0].saturating_sub(prefix_len),
+            CellAlign::Left,
+        ));
+        actions_spans.push(Span::raw(format!("{:width$}", "", width = widths[1])));
+        actions_spans.extend(format_spans_cell(
+            actions_col2,
+            widths[2],
+            CellAlign::Center,
+        ));
+        actions_spans.extend(format_spans_cell(
+            actions_col3,
+            widths[3],
+            CellAlign::Center,
+        ));
+        actions_spans.extend(format_spans_cell(
+            actions_col4,
+            widths[4],
+            CellAlign::Center,
+        ));
+
+        let actions = Line::from(actions_spans);
         lines.push(clip_line(actions, content_width));
     }
 
     lines
+}
+
+fn format_spans_cell(
+    mut spans: Vec<Span<'static>>,
+    width: usize,
+    align: CellAlign,
+) -> Vec<Span<'static>> {
+    let content_len: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+
+    if content_len >= width {
+        return spans;
+    }
+
+    let padding = width - content_len;
+    match align {
+        CellAlign::Left => {
+            spans.push(Span::raw(format!("{:padding$}", "", padding = padding)));
+            spans
+        }
+        CellAlign::Center => {
+            let left = padding / 2;
+            let right = padding - left;
+            let mut result = vec![Span::raw(format!("{:left$}", "", left = left))];
+            result.extend(spans);
+            result.push(Span::raw(format!("{:right$}", "", right = right)));
+            result
+        }
+    }
 }
 
 fn unit_row_column_widths(total_width: u16) -> [usize; 5] {
@@ -302,11 +369,6 @@ mod tests {
         assert_eq!(lines.len(), 3);
         assert!(lines[1].spans[0].content.starts_with(" ╟ "));
         assert!(lines[2].spans[0].content.starts_with(" ╙ "));
-        assert!(
-            lines[2]
-                .spans
-                .iter()
-                .any(|span| span.content == "Actions: ")
-        );
+        assert!(lines[2].spans.iter().any(|span| span.content == "Action: "));
     }
 }

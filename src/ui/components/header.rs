@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::state::{App, FilterMenu, ViewMode};
+use crate::app::state::context::{App, FilterMenu, ViewMode};
 
 pub fn draw_unit_header(frame: &mut Frame, app: &App, area: Rect) -> (Rect, Rect, Rect, Rect) {
     let header_layout = Layout::horizontal([
@@ -51,10 +51,7 @@ fn search_segment_content(app: &App) -> (Text<'static>, Style) {
     };
 
     if app.search.query.is_empty() && !app.search.is_active {
-        (
-            Text::from(placeholder),
-            search_segment_style(false, false),
-        )
+        (Text::from(placeholder), search_segment_style(false, false))
     } else {
         (
             render_search_text(&app.search.query, app.search.cursor),

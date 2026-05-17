@@ -21,7 +21,7 @@ use tokio::{
 };
 
 use crate::{
-    app::state::{App, strip_ansi_content},
+    app::{state::context::App, utils::strip_ansi_content},
     models::{EditRequest, PendingAction, PendingAction::EditFile, UnitEditMode},
     ui::{render::draw, utils::Tui},
 };

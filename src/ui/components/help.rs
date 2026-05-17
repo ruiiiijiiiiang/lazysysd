@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::app::state::{App, ViewMode};
+use crate::app::state::context::{App, ViewMode};
 
 pub fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
     let columns = Layout::horizontal([
@@ -80,11 +80,7 @@ fn unit_list_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<
             shortcut("a/n/o/p", "Toggle filters"),
             shortcut("Ctrl+r", "Reset filters"),
         ],
-        vec![
-            shortcut("l/Enter", "Logs"),
-            shortcut("f", "Unit file"),
-            shortcut("q", "Quit"),
-        ],
+        vec![shortcut("q", "Quit")],
     )
 }
 
@@ -98,14 +94,9 @@ fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<L
     }
 
     if app.log_view.visual_line_select || app.log_view.visual_select {
-        let action_key = if app.log_view.visual_line_select {
-            "Mark"
-        } else {
-            "Toggle"
-        };
         return (
             nav_shortcuts(),
-            vec![shortcut("Space", action_key), shortcut("y/Enter", "Yank")],
+            vec![shortcut("Space", "Mark"), shortcut("y/Enter", "Yank")],
             vec![shortcut("Esc", "Cancel")],
         );
     }
@@ -114,12 +105,16 @@ fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<L
     if !app.search.query.is_empty() {
         action.push(shortcut("n/N", "Next/prev"));
     }
-    action.push(shortcut("v/V", "Select/Line"));
 
     (
         nav_shortcuts(),
         action,
-        vec![shortcut("e", "Open in editor"), shortcut("Esc/q", "Back")],
+        vec![
+            shortcut("v", "Select lines"),
+            shortcut("V", "Select line blocks"),
+            shortcut("e", "Open in editor"),
+            shortcut("Esc/q", "Back"),
+        ],
     )
 }
 

@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use crate::{
-    app::state::{App, FilterMenu, FilterMenuOption, UnitSelectionKey},
+    app::state::context::{App, FilterMenu, FilterMenuOption, UnitSelectionKey},
     models::UnitInfo,
 };
 
@@ -186,9 +186,9 @@ impl App {
                 .filter(|(_, unit)| self.unit_matches_state_filters(unit))
                 .map(|(index, _)| index)
                 .collect();
-            self.unit_list.filtered_indices.sort_by_key(|&index| {
-                self.unit_list.units[index].name.to_ascii_lowercase()
-            });
+            self.unit_list
+                .filtered_indices
+                .sort_by_key(|&index| self.unit_list.units[index].name.to_ascii_lowercase());
         } else {
             let mut scored: Vec<(usize, u32)> = self
                 .unit_list

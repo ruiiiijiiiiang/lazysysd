@@ -50,6 +50,12 @@ impl Tui {
         }
         Ok(())
     }
+
+    pub fn exit_terminal() -> Result<()> {
+        disable_raw_mode()?;
+        execute!(stdout(), LeaveAlternateScreen, crossterm::cursor::Show)?;
+        Ok(())
+    }
 }
 
 pub const UNIT_COLUMN_CONSTRAINTS: [Constraint; 6] = [

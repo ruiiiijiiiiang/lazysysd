@@ -10,18 +10,11 @@ use ratatui::{
 use crate::{
     app::auth::EmbeddedAuthFlow,
     models::EditReview,
-    ui::utils::{
-        AUTH_MODAL_HEIGHT, AUTH_MODAL_WIDTH, EDIT_REVIEW_MODAL_HEIGHT, EDIT_REVIEW_MODAL_WIDTH,
-        keybind_style, modal_border_style,
-    },
+    ui::utils::{MODAL_HEIGHT, MODAL_WIDTH, keybind_style, modal_border_style},
 };
 
 pub fn render_edit_review_modal(frame: &mut Frame, review: &EditReview) {
-    let area = centered_rect(
-        EDIT_REVIEW_MODAL_WIDTH,
-        EDIT_REVIEW_MODAL_HEIGHT,
-        frame.area(),
-    );
+    let area = centered_rect(MODAL_WIDTH, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(format!(" Apply {} ", review.mode.action_label()))
@@ -94,7 +87,7 @@ pub fn render_error_modal(frame: &mut Frame, message: &str) {
 }
 
 pub fn render_auth_modal(frame: &mut Frame, auth: &EmbeddedAuthFlow) {
-    let area = centered_rect(AUTH_MODAL_WIDTH, AUTH_MODAL_HEIGHT, frame.area());
+    let area = centered_rect(MODAL_WIDTH, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(" Authentication Required ")

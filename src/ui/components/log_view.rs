@@ -16,9 +16,10 @@ use crate::{
 };
 
 pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Journal Logs ");
+    let block = Block::default().borders(Borders::ALL).title(format!(
+        " Journal Logs: {} ",
+        app.unit_list.selected_key.name
+    ));
 
     if app.is_loading && app.log_view.logs.is_empty() {
         frame.render_widget(
@@ -41,7 +42,7 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
             .iter()
             .enumerate()
             .map(|(i, line)| {
-                let marker = if app.log_view.visual_line_select {
+                let marker = if app.log_view.line_block_select {
                     match line_range {
                         Some((start, end)) if start == end && i == start => {
                             Span::styled("━ ", Style::default().fg(Color::Green))
@@ -57,7 +58,7 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
                         }
                         _ => Span::raw("┋ "),
                     }
-                } else if app.log_view.visual_select {
+                } else if app.log_view.line_select {
                     if app.log_view.selected_lines.contains(&i) {
                         Span::styled("☑ ", Style::default().fg(Color::Green))
                     } else {
@@ -66,7 +67,7 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     Span::raw("")
                 };
-                let should_bold = if app.log_view.visual_line_select {
+                let should_bold = if app.log_view.line_block_select {
                     line_range
                         .map(|(start, end)| i >= start && i <= end)
                         .unwrap_or(false)

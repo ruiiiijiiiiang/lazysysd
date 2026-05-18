@@ -60,17 +60,15 @@ impl Tui {
 
 pub const UNIT_COLUMN_CONSTRAINTS: [Constraint; 6] = [
     Constraint::Percentage(30),
-    Constraint::Percentage(8),
-    Constraint::Percentage(8),
-    Constraint::Percentage(18),
-    Constraint::Percentage(18),
-    Constraint::Percentage(18),
+    Constraint::Percentage(10),
+    Constraint::Percentage(10),
+    Constraint::Percentage(17),
+    Constraint::Percentage(17),
+    Constraint::Percentage(16),
 ];
 
-pub const EDIT_REVIEW_MODAL_WIDTH: u16 = 50;
-pub const EDIT_REVIEW_MODAL_HEIGHT: u16 = 33;
-pub const AUTH_MODAL_WIDTH: u16 = 33;
-pub const AUTH_MODAL_HEIGHT: u16 = 25;
+pub const MODAL_WIDTH: u16 = 50;
+pub const MODAL_HEIGHT: u16 = 33;
 
 pub fn keybind_style() -> Style {
     Style::default().fg(Color::Cyan).bold()

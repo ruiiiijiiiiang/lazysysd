@@ -130,7 +130,7 @@ fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<L
         );
     }
 
-    if app.log_view.visual_line_select || app.log_view.visual_select {
+    if app.log_view.line_block_select || app.log_view.line_select {
         return (
             nav_shortcuts(),
             vec![shortcut("Space", "Mark"), shortcut("y/Enter", "Copy")],

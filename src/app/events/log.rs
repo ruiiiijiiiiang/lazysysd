@@ -8,13 +8,13 @@ use crate::{
 
 impl App {
     pub async fn handle_log_view_key(&mut self, key: KeyEvent) -> bool {
-        if self.log_view.visual_line_select {
+        if self.log_view.line_block_select {
             if self.handle_nav_key(key) {
                 return false;
             }
             match key.code {
                 KeyCode::Esc => {
-                    self.log_view.visual_line_select = false;
+                    self.log_view.line_block_select = false;
                     self.log_view.line_marks.clear();
                 }
                 KeyCode::Char(' ') => {
@@ -30,7 +30,7 @@ impl App {
                             crate::models::NotificationType::Success,
                         );
                     }
-                    self.log_view.visual_line_select = false;
+                    self.log_view.line_block_select = false;
                     self.log_view.line_marks.clear();
                 }
                 _ => {}
@@ -38,7 +38,7 @@ impl App {
             return false;
         }
 
-        if self.log_view.visual_select {
+        if self.log_view.line_select {
             if self.handle_nav_key(key) {
                 return false;
             }
@@ -91,14 +91,14 @@ impl App {
                 return false;
             }
             KeyCode::Char('v') if !self.log_view.logs.is_empty() => {
-                self.log_view.visual_select = true;
+                self.log_view.line_select = true;
                 if self.log_view.state.selected().is_none() {
                     self.log_view.state.select(Some(0));
                 }
                 return false;
             }
             KeyCode::Char('V') if !self.log_view.logs.is_empty() => {
-                self.log_view.visual_line_select = true;
+                self.log_view.line_block_select = true;
                 self.log_view.line_marks.clear();
                 if self.log_view.state.selected().is_none() {
                     self.log_view.state.select(Some(0));

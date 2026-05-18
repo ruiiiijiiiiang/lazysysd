@@ -8,8 +8,8 @@ use crate::app::state::context::{App, ViewMode};
 pub struct LogViewState {
     pub logs: Vec<String>,
     pub state: ListState,
-    pub visual_select: bool,
-    pub visual_line_select: bool,
+    pub line_select: bool,
+    pub line_block_select: bool,
     pub selected_lines: HashSet<usize>,
     pub line_marks: Vec<usize>,
 }
@@ -80,8 +80,8 @@ impl LogViewState {
     }
 
     pub fn clear_visual_modes(&mut self) {
-        self.visual_select = false;
-        self.visual_line_select = false;
+        self.line_select = false;
+        self.line_block_select = false;
         self.selected_lines.clear();
         self.line_marks.clear();
     }

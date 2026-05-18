@@ -2,6 +2,13 @@
 name = "sdctl"
 version = "0.1.0"
 edition = "2024"
+authors = ["Rui Jiang"]
+description = "An easy-to-use TUI for managing systemd units"
+license = "MIT"
+repository = "https://github.com/ruidofm/sdctl"
+readme = "README.md"
+keywords = ["systemd", "tui", "ratatui", "linux"]
+categories = ["command-line-utilities", "system-administration"]
 
 [dependencies]
 ratatui = { version = "0.30", features = ["all-widgets"] }

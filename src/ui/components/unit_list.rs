@@ -1,12 +1,19 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
-use crate::{app::state::context::App, models::UnitInfo, ui::render::render_scrollbar};
+use crate::{
+    app::state::context::App,
+    models::{UnitInfo, UnitType},
+    ui::{
+        render::render_scrollbar,
+        utils::{UNIT_COLUMN_CONSTRAINTS, keybind_style, selection_style},
+    },
+};
 
 pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let content_width = area.width.saturating_sub(2) as usize;
@@ -44,7 +51,7 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
         let list = List::new(items)
             .block(list_block)
-            .highlight_style(Style::default().bg(Color::DarkGray).bold());
+            .highlight_style(selection_style().bold());
 
         frame.render_stateful_widget(list, area, &mut app.unit_list.state);
 
@@ -59,31 +66,36 @@ pub fn draw_unit_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn format_unit_row(
     unit: &UnitInfo,
-    widths: &[usize; 5],
+    widths: &[usize; 6],
     content_width: usize,
     is_selected: bool,
 ) -> Vec<Line<'static>> {
     let active_sub = format!("{} ({})", unit.active_state, unit.sub_state);
+    let unit_type = UnitType::from_unit_name(&unit.name);
     let mut lines = vec![Line::from(vec![
         Span::styled(
             format_cell(&unit.name, widths[0], CellAlign::Left),
             Style::default().bold(),
         ),
         Span::styled(
-            format_cell(&unit.scope, widths[1], CellAlign::Center),
-            Style::default().fg(scope_color(&unit.scope)),
+            format_cell(unit_type.as_str(), widths[1], CellAlign::Center),
+            Style::default().fg(unit_type.color()),
         ),
         Span::styled(
-            format_cell(&active_sub, widths[2], CellAlign::Center),
-            Style::default().fg(active_state_color(&unit.active_state)),
+            format_cell(unit.scope.as_str(), widths[2], CellAlign::Center),
+            Style::default().fg(unit.scope.color()),
         ),
         Span::styled(
-            format_cell(&unit.enablement_state, widths[3], CellAlign::Center),
-            Style::default().fg(enablement_state_color(&unit.enablement_state)),
+            format_cell(&active_sub, widths[3], CellAlign::Center),
+            Style::default().fg(unit.active_state.color()),
         ),
         Span::styled(
-            format_cell(&unit.load_state, widths[4], CellAlign::Center),
-            Style::default().fg(load_state_color(&unit.load_state)),
+            format_cell(unit.enablement_state.as_str(), widths[4], CellAlign::Center),
+            Style::default().fg(unit.enablement_state.color()),
+        ),
+        Span::styled(
+            format_cell(unit.load_state.as_str(), widths[5], CellAlign::Center),
+            Style::default().fg(unit.load_state.color()),
         ),
     ])];
 
@@ -91,44 +103,50 @@ fn format_unit_row(
         let detail = Line::from(vec![
             Span::raw(" ╟  "),
             Span::styled("Description: ", Style::default().bold()),
-            Span::styled(unit.description.clone(), Style::default().fg(Color::Gray)),
-            Span::raw("   "),
-            Span::styled("Path: ", Style::default().bold()),
-            Span::styled(unit.path.to_string(), Style::default().fg(Color::Gray)),
+            Span::styled(unit.description.clone(), Style::default().fg(Color::White)),
+            Span::styled("   Unit file path: ", Style::default().bold()),
+            Span::styled(
+                if unit.fragment_path.is_empty() {
+                    "N/A".to_string()
+                } else {
+                    unit.fragment_path.clone()
+                },
+                Style::default().fg(Color::White),
+            ),
         ]);
         lines.push(clip_line(detail, content_width));
 
         let actions_col0 = vec![
-            Span::styled("l/Enter", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" logs  "),
-            Span::styled("f", Style::default().fg(Color::Cyan).bold()),
-            Span::raw(" unit file"),
+            Span::styled("l/Enter", keybind_style()),
+            Span::raw(" view log  "),
+            Span::styled("f", keybind_style()),
+            Span::raw(" view unit file"),
         ];
 
         let actions_col2 = vec![
-            Span::styled("s", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("s", keybind_style()),
             Span::raw(" start "),
-            Span::styled("t", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("t", keybind_style()),
             Span::raw(" stop "),
-            Span::styled("r", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("r", keybind_style()),
             Span::raw(" restart"),
         ];
 
         let actions_col3 = vec![
-            Span::styled("e", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("e", keybind_style()),
             Span::raw(" enable "),
-            Span::styled("d", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("d", keybind_style()),
             Span::raw(" disable "),
-            Span::styled("m", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("m", keybind_style()),
             Span::raw(" mask "),
-            Span::styled("u", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("u", keybind_style()),
             Span::raw(" unmask"),
         ];
 
         let actions_col4 = vec![
-            Span::styled("R", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("R", keybind_style()),
             Span::raw(" reload "),
-            Span::styled("x", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("x", keybind_style()),
             Span::raw(" reset-failed"),
         ];
 
@@ -144,19 +162,20 @@ fn format_unit_row(
             CellAlign::Left,
         ));
         actions_spans.push(Span::raw(format!("{:width$}", "", width = widths[1])));
+        actions_spans.extend(format_spans_cell(vec![], widths[2], CellAlign::Center));
         actions_spans.extend(format_spans_cell(
             actions_col2,
-            widths[2],
-            CellAlign::Center,
-        ));
-        actions_spans.extend(format_spans_cell(
-            actions_col3,
             widths[3],
             CellAlign::Center,
         ));
         actions_spans.extend(format_spans_cell(
-            actions_col4,
+            actions_col3,
             widths[4],
+            CellAlign::Center,
+        ));
+        actions_spans.extend(format_spans_cell(
+            actions_col4,
+            widths[5],
             CellAlign::Center,
         ));
 
@@ -195,13 +214,14 @@ fn format_spans_cell(
     }
 }
 
-fn unit_row_column_widths(total_width: u16) -> [usize; 5] {
+fn unit_row_column_widths(total_width: u16) -> [usize; 6] {
     let columns = Layout::horizontal([
-        Constraint::Percentage(30),
-        Constraint::Percentage(15),
-        Constraint::Percentage(18),
-        Constraint::Percentage(18),
-        Constraint::Percentage(19),
+        UNIT_COLUMN_CONSTRAINTS[0],
+        UNIT_COLUMN_CONSTRAINTS[1],
+        UNIT_COLUMN_CONSTRAINTS[2],
+        UNIT_COLUMN_CONSTRAINTS[3],
+        UNIT_COLUMN_CONSTRAINTS[4],
+        UNIT_COLUMN_CONSTRAINTS[5],
     ])
     .split(Rect {
         x: 0,
@@ -216,47 +236,8 @@ fn unit_row_column_widths(total_width: u16) -> [usize; 5] {
         columns[2].width as usize,
         columns[3].width as usize,
         columns[4].width as usize,
+        columns[5].width as usize,
     ]
-}
-
-fn scope_color(scope: &str) -> Color {
-    match scope {
-        "global" => Color::Blue,
-        "session" => Color::Cyan,
-        _ => Color::White,
-    }
-}
-
-fn active_state_color(state: &str) -> Color {
-    match state {
-        "active" => Color::Green,
-        "failed" => Color::Red,
-        "inactive" => Color::DarkGray,
-        "activating" | "reloading" => Color::Yellow,
-        "deactivating" => Color::LightYellow,
-        "maintenance" => Color::Magenta,
-        _ => Color::White,
-    }
-}
-
-fn enablement_state_color(state: &str) -> Color {
-    match state {
-        "enabled" | "enabled-runtime" => Color::Green,
-        "static" | "generated" | "alias" | "indirect" | "linked" | "linked-runtime" => Color::Cyan,
-        "disabled" | "disabled-runtime" => Color::DarkGray,
-        "masked" | "masked-runtime" | "invalid" => Color::Red,
-        "transient" | "unknown" => Color::Yellow,
-        _ => Color::White,
-    }
-}
-
-fn load_state_color(state: &str) -> Color {
-    match state {
-        "loaded" => Color::Green,
-        "not-found" => Color::Yellow,
-        "bad-setting" | "error" | "masked" => Color::Red,
-        _ => Color::White,
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -347,28 +328,59 @@ mod tests {
     use super::*;
     use zbus::zvariant::OwnedObjectPath;
 
-    use crate::models::UnitInfo;
+    use crate::models::{UnitInfo, UnitType};
 
     fn unit() -> UnitInfo {
         UnitInfo {
             name: "ssh.service".to_string(),
             description: "Secure Shell".to_string(),
-            scope: "global".to_string(),
-            load_state: "loaded".to_string(),
-            active_state: "active".to_string(),
-            enablement_state: "enabled".to_string(),
+            scope: crate::models::UnitScope::Global,
+            load_state: crate::models::UnitLoadState::Loaded,
+            active_state: crate::models::UnitActiveState::Active,
+            enablement_state: crate::models::UnitEnablementState::Enabled,
             sub_state: "running".to_string(),
             path: OwnedObjectPath::try_from("/test/unit/ssh").unwrap(),
+            fragment_path: "/etc/systemd/system/ssh.service".to_string(),
         }
     }
 
     #[test]
     fn selected_row_gets_action_line_with_detail_prefix() {
-        let lines = format_unit_row(&unit(), &[10, 10, 10, 10, 10], 80, true);
+        let lines = format_unit_row(&unit(), &[10, 10, 10, 10, 10, 10], 80, true);
 
         assert_eq!(lines.len(), 3);
+        assert!(lines[0].spans[1].content.contains("service"));
         assert!(lines[1].spans[0].content.starts_with(" ╟ "));
+        assert!(
+            lines[1]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("Secure Shell"))
+        );
+        assert!(
+            lines[1]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("/etc/systemd/system/ssh.service"))
+        );
         assert!(lines[2].spans[0].content.starts_with(" ╙ "));
         assert!(lines[2].spans.iter().any(|span| span.content == "Action: "));
+    }
+
+    #[test]
+    fn format_unit_row_uses_unknown_type_for_unrecognized_suffix() {
+        let mut unknown = unit();
+        unknown.name = "ssh.whatever".to_string();
+
+        let lines = format_unit_row(&unknown, &[10, 10, 10, 10, 10, 10], 80, false);
+
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("unknown"))
+        );
+        assert_eq!(UnitType::from_unit_name(&unknown.name), UnitType::Unknown);
     }
 }

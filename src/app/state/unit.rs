@@ -7,7 +7,10 @@ use crate::{
         state::context::{App, FilterMenu, UnitSelectionKey, ViewMode},
         utils::build_override_template,
     },
-    models::{EditRequest, EditReview, PrivilegedAction, UnitAction, UnitEditMode, UnitInfo},
+    models::{
+        EditRequest, EditReview, PrivilegedAction, UnitAction, UnitActiveState, UnitEditMode,
+        UnitEnablementState, UnitInfo, UnitLoadState, UnitScope,
+    },
 };
 
 #[derive(Default)]
@@ -16,10 +19,11 @@ pub struct UnitListState {
     pub filtered_indices: Vec<usize>,
     pub state: ListState,
     pub selected_key: UnitSelectionKey,
-    pub active_filter: Option<String>,
-    pub enablement_filter: Option<String>,
-    pub load_filter: Option<String>,
-    pub scope_filter: Option<String>,
+    pub type_filter: Option<String>,
+    pub active_filter: Option<UnitActiveState>,
+    pub enablement_filter: Option<UnitEnablementState>,
+    pub load_filter: Option<UnitLoadState>,
+    pub scope_filter: Option<UnitScope>,
     pub open_filter_menu: Option<FilterMenu>,
 }
 
@@ -31,7 +35,7 @@ impl UnitListState {
             .and_then(|unit_index| self.units.get(unit_index))
             .map(|unit| UnitSelectionKey {
                 name: unit.name.clone(),
-                scope: unit.scope.clone(),
+                scope: unit.scope,
                 path: unit.path.to_string(),
             })
             .unwrap_or_default();
@@ -83,7 +87,7 @@ impl App {
         self.file_view.scroll = 0;
         self.pending_edit_review = Some(EditReview {
             unit_name: request.unit_name.clone(),
-            scope: request.scope.clone(),
+            scope: request.scope,
             mode: request.mode,
             edited_content,
             restore_content: request.restore_content,
@@ -105,7 +109,7 @@ impl App {
 
         Some(EditRequest {
             unit_name: unit.name.clone(),
-            scope: unit.scope.clone(),
+            scope: unit.scope,
             mode,
             initial_content,
             restore_content: self.file_view.content.clone(),
@@ -117,7 +121,7 @@ impl App {
         if let Some(unit) = self.get_selected_unit() {
             self.start_embedded_auth(PrivilegedAction::UnitCommand {
                 unit_name: unit.name.clone(),
-                scope: unit.scope.clone(),
+                scope: unit.scope,
                 action,
             })
             .await?;
@@ -178,27 +182,27 @@ mod tests {
         let mut app = App::blank(tx);
         app.unit_list.units = units;
         app.is_loading = false;
-        // update_filter is in filters.rs, so we might need a dummy or just use App::blank
         app
     }
 
     fn unit(
         name: &str,
         description: &str,
-        load_state: &str,
-        active_state: &str,
-        enablement_state: &str,
+        load_state: UnitLoadState,
+        active_state: UnitActiveState,
+        enablement_state: UnitEnablementState,
         path: &str,
     ) -> UnitInfo {
         UnitInfo {
             name: name.to_string(),
             description: description.to_string(),
-            scope: "global".to_string(),
-            load_state: load_state.to_string(),
-            active_state: active_state.to_string(),
-            enablement_state: enablement_state.to_string(),
+            scope: UnitScope::Global,
+            load_state,
+            active_state,
+            enablement_state,
             sub_state: active_state.to_string(),
             path: OwnedObjectPath::try_from(path).unwrap(),
+            fragment_path: format!("/etc/systemd/system/{name}"),
         }
     }
 
@@ -207,9 +211,9 @@ mod tests {
         let mut app = test_app(vec![unit(
             "ssh.service",
             "Secure Shell",
-            "loaded",
-            "active",
-            "enabled",
+            UnitLoadState::Loaded,
+            UnitActiveState::Active,
+            UnitEnablementState::Enabled,
             "/test/unit/ssh",
         )]);
         app.file_view.content = "[Service]\nExecStart=/usr/bin/ssh\n".to_string();
@@ -218,7 +222,7 @@ mod tests {
         app.finish_edit_request(
             EditRequest {
                 unit_name: "ssh.service".to_string(),
-                scope: "global".to_string(),
+                scope: UnitScope::Global,
                 mode: UnitEditMode::Override,
                 initial_content: "# draft\n".to_string(),
                 restore_content: app.file_view.content.clone(),
@@ -243,27 +247,26 @@ mod tests {
             unit(
                 "alpha.service",
                 "Alpha",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/alpha",
             ),
             unit(
                 "beta.service",
                 "Beta",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/beta",
             ),
         ]);
 
-        // Mock filtered_indices which usually comes from update_filter
         app.unit_list.filtered_indices = vec![0, 1];
         app.unit_list.select_index(Some(1));
 
         assert_eq!(app.unit_list.selected_key.name, "beta.service");
-        assert_eq!(app.unit_list.selected_key.scope, "global");
+        assert_eq!(app.unit_list.selected_key.scope, UnitScope::Global);
         assert_eq!(app.unit_list.selected_key.path, "/test/unit/beta");
         assert_eq!(
             app.get_selected_unit().map(|unit| unit.name.as_str()),

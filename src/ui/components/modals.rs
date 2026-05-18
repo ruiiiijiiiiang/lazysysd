@@ -1,21 +1,32 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
-    layout::{Layout, Margin, Rect},
+    layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Style},
-    text::{Line, Text},
-    widgets::{Block, Borders, Clear, Paragraph},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
-use crate::{app::auth::EmbeddedAuthFlow, models::EditReview};
+use crate::{
+    app::auth::EmbeddedAuthFlow,
+    models::EditReview,
+    ui::utils::{
+        AUTH_MODAL_HEIGHT, AUTH_MODAL_WIDTH, EDIT_REVIEW_MODAL_HEIGHT, EDIT_REVIEW_MODAL_WIDTH,
+        keybind_style, modal_border_style,
+    },
+};
 
 pub fn render_edit_review_modal(frame: &mut Frame, review: &EditReview) {
-    let area = centered_rect(72, 38, frame.area());
+    let area = centered_rect(
+        EDIT_REVIEW_MODAL_WIDTH,
+        EDIT_REVIEW_MODAL_HEIGHT,
+        frame.area(),
+    );
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(format!(" Apply {} ", review.mode.action_label()))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(modal_border_style());
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -40,15 +51,50 @@ pub fn render_edit_review_modal(frame: &mut Frame, review: &EditReview) {
         layout[0],
     );
     frame.render_widget(
-        Paragraph::new("a / Enter: apply    d / Esc: discard")
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", keybind_style()),
+            Span::raw(": apply    "),
+            Span::styled("Esc/q", keybind_style()),
+            Span::raw(": discard"),
+        ]))
+        .centered()
+        .block(Block::default().borders(Borders::ALL)),
+        layout[1],
+    );
+}
+
+pub fn render_error_modal(frame: &mut Frame, message: &str) {
+    let area = centered_rect(60, 20, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .title(" Error ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Red));
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let layout = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
+
+    frame.render_widget(
+        Paragraph::new(message)
+            .wrap(Wrap { trim: false })
+            .alignment(ratatui::layout::Alignment::Center),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Press any key to dismiss")
             .centered()
-            .block(Block::default().borders(Borders::ALL)),
+            .style(Style::default().fg(Color::DarkGray)),
         layout[1],
     );
 }
 
 pub fn render_auth_modal(frame: &mut Frame, auth: &EmbeddedAuthFlow) {
-    let area = centered_rect(33, 25, frame.area());
+    let area = centered_rect(AUTH_MODAL_WIDTH, AUTH_MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(" Authentication Required ")
@@ -87,6 +133,3 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     ])
     .split(popup_layout[1])[1]
 }
-
-use ratatui::layout::Constraint;
-use ratatui::widgets::Wrap;

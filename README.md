@@ -35,11 +35,12 @@ This is why I built `lazysysd` with a completely different security model: the a
 
 - `/`: Enter fuzzy search mode
 - `p` / `a` / `n` / `o`: Open Scope, Active, Enablement, or Load filter menus
+- `Ctrl+r`: Reset all filters
 - `s` / `t` / `r` / `R`: Start, stop, restart, or reload the selected unit
 - `e` / `d` / `m` / `u`: Enable, disable, mask, or unmask the selected unit
 - `Enter` / `l`: View unit logs
-- `Ctrl+r`: Reset all filters
 - `f`: View unit file
+- `Y`: Yank unit file path
 
 ### Log Viewer
 

@@ -7,7 +7,13 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
-use crate::{app::state::context::App, ui::render::render_scrollbar};
+use crate::{
+    app::state::context::App,
+    ui::{
+        render::render_scrollbar,
+        utils::{search_match_style, selection_style},
+    },
+};
 
 pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
@@ -97,7 +103,7 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
 
         let list = List::new(items)
             .block(block)
-            .highlight_style(Style::default().bg(Color::DarkGray));
+            .highlight_style(selection_style());
 
         frame.render_stateful_widget(list, area, &mut app.log_view.state);
 
@@ -128,7 +134,7 @@ fn highlight_exact_match(line: Line<'_>, query: &str) -> Line<'static> {
             }
             spans.push(Span::styled(
                 query.to_string(),
-                style.bg(Color::Yellow).fg(Color::Black),
+                style.patch(search_match_style()),
             ));
             remaining = &after[query.len()..];
         }

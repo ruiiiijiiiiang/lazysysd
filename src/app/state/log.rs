@@ -91,7 +91,7 @@ impl App {
     pub async fn enter_log_view(&mut self) {
         if let Some(unit) = self.get_selected_unit() {
             let name = unit.name.clone();
-            let scope = unit.scope.clone();
+            let scope = unit.scope.to_string();
             self.search.clear();
             self.view_mode = ViewMode::LogView;
             self.log_view.logs.clear();
@@ -163,7 +163,7 @@ mod tests {
     use tokio::sync::mpsc;
     use zbus::zvariant::OwnedObjectPath;
 
-    use crate::models::UnitInfo;
+    use crate::models::{UnitActiveState, UnitEnablementState, UnitInfo, UnitLoadState, UnitScope};
 
     fn test_app(units: Vec<UnitInfo>) -> App {
         let (tx, _rx) = mpsc::channel(1);
@@ -176,20 +176,21 @@ mod tests {
     fn unit(
         name: &str,
         description: &str,
-        load_state: &str,
-        active_state: &str,
-        enablement_state: &str,
+        load_state: UnitLoadState,
+        active_state: UnitActiveState,
+        enablement_state: UnitEnablementState,
         path: &str,
     ) -> UnitInfo {
         UnitInfo {
             name: name.to_string(),
             description: description.to_string(),
-            scope: "global".to_string(),
-            load_state: load_state.to_string(),
-            active_state: active_state.to_string(),
-            enablement_state: enablement_state.to_string(),
+            scope: UnitScope::Global,
+            load_state,
+            active_state,
+            enablement_state,
             sub_state: active_state.to_string(),
             path: OwnedObjectPath::try_from(path).unwrap(),
+            fragment_path: format!("/etc/systemd/system/{name}"),
         }
     }
 
@@ -198,9 +199,9 @@ mod tests {
         let mut app = test_app(vec![unit(
             "alpha.service",
             "Alpha",
-            "loaded",
-            "active",
-            "enabled",
+            UnitLoadState::Loaded,
+            UnitActiveState::Active,
+            UnitEnablementState::Enabled,
             "/test/unit/alpha",
         )]);
         app.log_view.logs = vec!["one".to_string(), "two".to_string(), "three".to_string()];
@@ -222,9 +223,9 @@ mod tests {
         let mut app = test_app(vec![unit(
             "alpha.service",
             "Alpha",
-            "loaded",
-            "active",
-            "enabled",
+            UnitLoadState::Loaded,
+            UnitActiveState::Active,
+            UnitEnablementState::Enabled,
             "/test/unit/alpha",
         )]);
         app.log_view.logs = vec![

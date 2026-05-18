@@ -6,7 +6,13 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::{app::state::context::App, ui::render::render_scrollbar};
+use crate::{
+    app::state::context::App,
+    ui::{
+        render::render_scrollbar,
+        utils::{search_match_style, section_header_style},
+    },
+};
 
 pub fn draw_file_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
@@ -81,10 +87,7 @@ fn highlight_unit_file_line_with_search(
 
     if trimmed.starts_with('[') && trimmed.ends_with(']') {
         return highlight_exact_matches(
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Cyan).bold(),
-            )),
+            Line::from(Span::styled(line.to_string(), section_header_style())),
             search_query,
         );
     }
@@ -140,7 +143,7 @@ fn highlight_exact_matches(line: Line<'static>, query: &str) -> Line<'static> {
             }
             spans.push(Span::styled(
                 query.to_string(),
-                style.bg(Color::Yellow).fg(Color::Black),
+                style.patch(search_match_style()),
             ));
             remaining = &after[query.len()..];
         }

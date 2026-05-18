@@ -55,10 +55,13 @@ impl App {
                         }
                         None => {}
                     }
+                } else {
+                    self.error_message = result.error.or(Some("Action failed".to_string()));
                 }
             }
-            AppInternalEvent::Error(_err) => {
+            AppInternalEvent::Error(err) => {
                 self.is_loading = false;
+                self.error_message = Some(err);
             }
         }
     }

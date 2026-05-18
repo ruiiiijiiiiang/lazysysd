@@ -4,7 +4,12 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{
+    Terminal,
+    backend::CrosstermBackend,
+    layout::Constraint,
+    style::{Color, Style},
+};
 
 pub struct Tui {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -47,8 +52,48 @@ impl Tui {
     }
 }
 
-impl Drop for Tui {
-    fn drop(&mut self) {
-        let _ = self.exit();
-    }
+pub const UNIT_COLUMN_CONSTRAINTS: [Constraint; 6] = [
+    Constraint::Percentage(30),
+    Constraint::Percentage(8),
+    Constraint::Percentage(8),
+    Constraint::Percentage(18),
+    Constraint::Percentage(18),
+    Constraint::Percentage(18),
+];
+
+pub const EDIT_REVIEW_MODAL_WIDTH: u16 = 50;
+pub const EDIT_REVIEW_MODAL_HEIGHT: u16 = 33;
+pub const AUTH_MODAL_WIDTH: u16 = 33;
+pub const AUTH_MODAL_HEIGHT: u16 = 25;
+
+pub fn keybind_style() -> Style {
+    Style::default().fg(Color::Cyan).bold()
+}
+
+pub fn selection_style() -> Style {
+    Style::default().bg(Color::DarkGray)
+}
+
+pub fn accent_style() -> Style {
+    Style::default().fg(Color::Cyan)
+}
+
+pub fn search_query_style() -> Style {
+    accent_style()
+}
+
+pub fn search_cursor_style() -> Style {
+    Style::default().bg(Color::Yellow).fg(Color::Black).bold()
+}
+
+pub fn search_match_style() -> Style {
+    Style::default().bg(Color::Yellow).fg(Color::Black)
+}
+
+pub fn modal_border_style() -> Style {
+    accent_style()
+}
+
+pub fn section_header_style() -> Style {
+    keybind_style()
 }

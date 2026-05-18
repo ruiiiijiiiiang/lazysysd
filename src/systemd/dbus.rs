@@ -9,11 +9,14 @@ use futures::{StreamExt, stream};
 use serde::Deserialize;
 use zbus::{
     Connection, Result as ZbusResult,
-    zvariant::Type,
+    zvariant::{Type, Value},
     {proxy, zvariant::OwnedObjectPath},
 };
 
-use crate::models::{AttemptResult, UnitAction, UnitInfo};
+use crate::models::{
+    AttemptResult, UnitAction, UnitActiveState, UnitEnablementState, UnitInfo, UnitLoadState,
+    UnitScope,
+};
 
 #[derive(Debug, Deserialize, Type)]
 pub struct UnitRow {
@@ -29,11 +32,18 @@ pub struct UnitRow {
     pub _job_path: OwnedObjectPath,
 }
 
+#[derive(Debug, Clone)]
+struct EnablementInfo {
+    pub path: String,
+    pub state: String,
+}
+
 type UnitFileState = (String, String);
 type UnitFileChange = (String, String, String);
 type UnitFileChanges = Vec<UnitFileChange>;
+type EnablementCacheMap = HashMap<(String, String), EnablementInfo>;
 
-static ENABLEMENT_STATE_CACHE: OnceLock<Mutex<HashMap<(String, String), String>>> = OnceLock::new();
+static ENABLEMENT_STATE_CACHE: OnceLock<Mutex<EnablementCacheMap>> = OnceLock::new();
 
 #[proxy(
     interface = "org.freedesktop.systemd1.Manager",
@@ -74,6 +84,15 @@ trait SystemdManager {
     ) -> ZbusResult<UnitFileChanges>;
     #[zbus(allow_interactive_auth)]
     fn unmask_unit_files(&self, files: Vec<String>, runtime: bool) -> ZbusResult<UnitFileChanges>;
+
+    #[zbus(allow_interactive_auth)]
+    fn start_transient_unit(
+        &self,
+        name: &str,
+        mode: &str,
+        properties: Vec<(&str, Value<'_>)>,
+        aux: Vec<(&str, Vec<(&str, Value<'_>)>)>,
+    ) -> ZbusResult<OwnedObjectPath>;
 }
 
 #[proxy(
@@ -154,18 +173,29 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
     let mut unresolved_units = Vec::new();
 
     for unit in units_raw {
-        if let Some(enablement_state) =
-            resolve_enablement_state_cached(&scope_name, &unit.name, &unit_file_states)
+        if let Some(info) =
+            resolve_cached_enablement_state(&scope_name, &unit.name, &unit_file_states)
         {
+            let scope = scope_name.parse::<UnitScope>().unwrap_or(UnitScope::Global);
             units.push(UnitInfo {
                 name: unit.name,
                 description: unit.description,
-                scope: scope_name.clone(),
-                load_state: unit.load_state,
-                active_state: unit.active_state,
-                enablement_state,
+                scope,
+                load_state: unit
+                    .load_state
+                    .parse::<UnitLoadState>()
+                    .unwrap_or(UnitLoadState::Unknown),
+                active_state: unit
+                    .active_state
+                    .parse::<UnitActiveState>()
+                    .unwrap_or(UnitActiveState::Unknown),
+                enablement_state: info
+                    .state
+                    .parse::<UnitEnablementState>()
+                    .unwrap_or(UnitEnablementState::Unknown),
                 sub_state: unit.sub_state,
                 path: unit.path,
+                fragment_path: info.path,
             });
         } else {
             unresolved_units.push(unit);
@@ -177,17 +207,28 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
         let unit_file_states = &unit_file_states;
         let scope = scope_name.clone();
         async move {
-            let enablement_state =
+            let info =
                 resolve_enablement_state(manager, &scope, &unit.name, unit_file_states).await;
+            let scope = scope.parse::<UnitScope>().unwrap_or(UnitScope::Global);
             UnitInfo {
                 name: unit.name,
                 description: unit.description,
                 scope,
-                load_state: unit.load_state,
-                active_state: unit.active_state,
-                enablement_state,
+                load_state: unit
+                    .load_state
+                    .parse::<UnitLoadState>()
+                    .unwrap_or(UnitLoadState::Unknown),
+                active_state: unit
+                    .active_state
+                    .parse::<UnitActiveState>()
+                    .unwrap_or(UnitActiveState::Unknown),
+                enablement_state: info
+                    .state
+                    .parse::<UnitEnablementState>()
+                    .unwrap_or(UnitEnablementState::Unknown),
                 sub_state: unit.sub_state,
                 path: unit.path,
+                fragment_path: info.path,
             }
         }
     }))
@@ -200,22 +241,28 @@ async fn fetch_units_from_scope(scope: &str) -> Result<Vec<UnitInfo>> {
     Ok(units)
 }
 
-pub async fn perform_unit_action(name: &str, scope: &str, action: UnitAction) -> AttemptResult {
+pub async fn perform_unit_action(
+    name: &str,
+    scope: UnitScope,
+    action: UnitAction,
+) -> AttemptResult {
     match run_dbus_unit_action(name, scope, action).await {
         Ok(res) => res,
-        Err(_) => AttemptResult { success: false },
+        Err(e) => AttemptResult {
+            success: false,
+            error: Some(e.to_string()),
+        },
     }
 }
 
 async fn run_dbus_unit_action(
     name: &str,
-    scope: &str,
+    scope: UnitScope,
     action: UnitAction,
 ) -> ZbusResult<AttemptResult> {
-    let connection = if scope == "session" {
-        Connection::session().await?
-    } else {
-        Connection::system().await?
+    let connection = match scope {
+        UnitScope::Session => Connection::session().await?,
+        UnitScope::Global => Connection::system().await?,
     };
     let manager = SystemdManagerProxy::new(&connection).await?;
 
@@ -267,59 +314,20 @@ async fn run_dbus_unit_action(
         clear_enablement_state_cache();
     }
 
-    Ok(AttemptResult { success: true })
-}
-
-fn build_unit_file_state_map(unit_files: Vec<UnitFileState>) -> HashMap<String, String> {
-    unit_files
-        .into_iter()
-        .filter_map(|(path, state)| {
-            Path::new(&path)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| (name.to_string(), state))
-        })
-        .collect()
-}
-
-fn find_cached_unit_file_state(
-    unit_name: &str,
-    unit_file_states: &HashMap<String, String>,
-) -> Option<String> {
-    unit_file_states.get(unit_name).cloned().or_else(|| {
-        template_unit_name(unit_name)
-            .and_then(|template_name| unit_file_states.get(&template_name).cloned())
+    Ok(AttemptResult {
+        success: true,
+        error: None,
     })
 }
 
-fn enablement_state_cache() -> &'static Mutex<HashMap<(String, String), String>> {
-    ENABLEMENT_STATE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn clear_enablement_state_cache() {
-    let mut cache = enablement_state_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.clear();
-}
-
-fn cache_enablement_state(scope: &str, unit_name: &str, state: &str) {
-    let mut cache = enablement_state_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.insert(
-        (scope.to_string(), unit_name.to_string()),
-        state.to_string(),
-    );
-}
-
-fn cached_enablement_state(scope: &str, unit_name: &str) -> Option<String> {
-    let cache = enablement_state_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache
-        .get(&(scope.to_string(), unit_name.to_string()))
-        .cloned()
+fn build_unit_file_state_map(unit_files: Vec<UnitFileState>) -> HashMap<String, EnablementInfo> {
+    unit_files
+        .into_iter()
+        .filter_map(|(path, state)| {
+            let name = Path::new(&path).file_name()?.to_str()?.to_string();
+            Some((name, EnablementInfo { path, state }))
+        })
+        .collect()
 }
 
 fn unit_has_file(unit_name: &str) -> bool {
@@ -330,22 +338,8 @@ fn unit_has_file(unit_name: &str) -> bool {
         || unit_name.ends_with(".automount")
         || unit_name.ends_with(".path")
         || unit_name.ends_with(".swap")
-}
-
-fn resolve_enablement_state_cached(
-    scope: &str,
-    unit_name: &str,
-    unit_file_states: &HashMap<String, String>,
-) -> Option<String> {
-    if let Some(state) = find_cached_unit_file_state(unit_name, unit_file_states) {
-        return Some(state);
-    }
-
-    if !unit_has_file(unit_name) {
-        return Some("static".to_string());
-    }
-
-    cached_enablement_state(scope, unit_name)
+        || unit_name.ends_with(".target")
+        || unit_name.ends_with(".slice")
 }
 
 fn template_unit_name(unit_name: &str) -> Option<String> {
@@ -358,16 +352,72 @@ async fn resolve_enablement_state(
     manager: &SystemdManagerProxy<'_>,
     scope: &str,
     unit_name: &str,
-    unit_file_states: &HashMap<String, String>,
-) -> String {
-    if let Some(state) = resolve_enablement_state_cached(scope, unit_name, unit_file_states) {
-        return state;
+    unit_file_states: &HashMap<String, EnablementInfo>,
+) -> EnablementInfo {
+    if let Some(res) = resolve_cached_enablement_state(scope, unit_name, unit_file_states) {
+        return res;
     }
 
     let state = manager
         .get_unit_file_state(unit_name)
         .await
         .unwrap_or_else(|_| "transient".to_string());
-    cache_enablement_state(scope, unit_name, &state);
-    state
+
+    let res = EnablementInfo {
+        state,
+        path: String::new(),
+    };
+    cache_enablement_state(scope, unit_name, res.clone());
+    res
+}
+
+fn resolve_cached_enablement_state(
+    scope: &str,
+    unit_name: &str,
+    unit_file_states: &HashMap<String, EnablementInfo>,
+) -> Option<EnablementInfo> {
+    if let Some(info) = unit_file_states.get(unit_name).cloned().or_else(|| {
+        template_unit_name(unit_name)
+            .and_then(|template_name| unit_file_states.get(&template_name).cloned())
+    }) {
+        return Some(info);
+    }
+
+    if !unit_has_file(unit_name) {
+        return Some(EnablementInfo {
+            state: "static".to_string(),
+            path: String::new(),
+        });
+    }
+
+    get_cached_enablement_state(scope, unit_name)
+}
+
+// Enablement state has to be fetched individually for each unit.
+// Use a cache to avoid resolving them during each refresh.
+fn enablement_state_cache() -> &'static Mutex<EnablementCacheMap> {
+    ENABLEMENT_STATE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cache_enablement_state(scope: &str, unit_name: &str, info: EnablementInfo) {
+    let mut cache = enablement_state_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.insert((scope.to_string(), unit_name.to_string()), info);
+}
+
+fn get_cached_enablement_state(scope: &str, unit_name: &str) -> Option<EnablementInfo> {
+    let cache = enablement_state_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache
+        .get(&(scope.to_string(), unit_name.to_string()))
+        .cloned()
+}
+
+fn clear_enablement_state_cache() {
+    let mut cache = enablement_state_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.clear();
 }

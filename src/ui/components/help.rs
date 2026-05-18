@@ -1,18 +1,21 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::app::state::context::{App, ViewMode};
+use crate::{
+    app::state::context::{App, ViewMode},
+    ui::utils::keybind_style,
+};
 
 pub fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
     let columns = Layout::horizontal([
         Constraint::Percentage(33),
-        Constraint::Percentage(33),
         Constraint::Percentage(34),
+        Constraint::Percentage(33),
     ])
     .split(area.inner(ratatui::layout::Margin {
         vertical: 0,
@@ -77,10 +80,10 @@ fn unit_list_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<
         nav_shortcuts(),
         vec![
             shortcut("/", "Search"),
-            shortcut("a/n/o/p", "Toggle filters"),
+            shortcut("a/n/o/p/y", "Toggle filters"),
             shortcut("Ctrl+r", "Reset filters"),
         ],
-        vec![shortcut("q", "Quit")],
+        vec![shortcut("Y", "Copy unit file path"), shortcut("q", "Quit")],
     )
 }
 
@@ -131,7 +134,7 @@ fn file_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<
         return (
             vec![],
             vec![],
-            vec![shortcut("a/Enter", "Apply"), shortcut("d/Esc/q", "Discard")],
+            vec![shortcut("Enter", "Apply"), shortcut("Esc/q", "Discard")],
         );
     }
 
@@ -153,7 +156,7 @@ fn file_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<
 
 fn shortcut(key: &str, description: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{key}: "), Style::default().fg(Color::Cyan).bold()),
-        Span::styled(description.to_string(), Style::default()),
+        Span::styled(key.to_string(), keybind_style()),
+        Span::styled(format!(": {description}"), Style::default()),
     ])
 }

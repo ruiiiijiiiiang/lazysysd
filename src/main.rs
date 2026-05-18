@@ -22,7 +22,7 @@ use tokio::{
 
 use crate::{
     app::{state::context::App, utils::strip_ansi_content},
-    models::{EditRequest, PendingAction, PendingAction::EditFile, UnitEditMode},
+    models::{EditRequest, PendingAction, PendingAction::EditFile, UnitEditMode, UnitScope},
     ui::{render::draw, utils::Tui},
 };
 
@@ -87,6 +87,7 @@ async fn run_app() -> Result<()> {
                                     let result = run_editor_request(
                                         request.initial_content,
                                         request.unit_name,
+                                        request.scope,
                                         request.mode,
                                         request.restore_content,
                                         request.restore_path,
@@ -130,6 +131,7 @@ async fn run_app() -> Result<()> {
 fn run_editor_request(
     initial_content: String,
     unit_name: String,
+    scope: UnitScope,
     mode: UnitEditMode,
     restore_content: String,
     restore_path: String,
@@ -152,7 +154,7 @@ fn run_editor_request(
 
     let request = EditRequest {
         unit_name,
-        scope: String::new(),
+        scope,
         mode,
         initial_content,
         restore_content,

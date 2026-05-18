@@ -53,7 +53,7 @@ impl App {
         self.is_loading = true;
         let tx = self.internal_tx.clone();
         spawn(async move {
-            match get_unit_fragment_path(&unit.path, &unit.scope).await {
+            match get_unit_fragment_path(&unit.path, &unit.scope.to_string()).await {
                 Ok(path) => {
                     if path.is_empty() || path == "/dev/null" {
                         let _ = tx

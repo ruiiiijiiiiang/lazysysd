@@ -2,81 +2,79 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::{
     app::state::context::{App, FilterMenu, FilterMenuOption, UnitSelectionKey},
-    models::UnitInfo,
+    models::{UnitActiveState, UnitEnablementState, UnitInfo, UnitLoadState, UnitScope, UnitType},
 };
 
 impl FilterMenu {
-    pub fn title(self) -> &'static str {
+    pub fn unit_value(self, unit: &UnitInfo) -> String {
         match self {
-            Self::Active => "Active State",
-            Self::Enablement => "Enablement State",
-            Self::Load => "Load State",
-            Self::Scope => "Scope",
+            Self::Type => UnitType::from_unit_name(&unit.name).as_str().to_string(),
+            Self::Scope => unit.scope.as_str().to_string(),
+            Self::Active => unit.active_state.as_str().to_string(),
+            Self::Enablement => unit.enablement_state.as_str().to_string(),
+            Self::Load => unit.load_state.as_str().to_string(),
         }
     }
 
-    pub fn segment_title(self, show_hotkey: bool) -> &'static str {
+    pub fn selected_value(self, app: &App) -> Option<String> {
         match self {
-            Self::Active => {
-                if show_hotkey {
-                    " Active (a) "
-                } else {
-                    " Active "
-                }
-            }
-            Self::Enablement => {
-                if show_hotkey {
-                    " Enablement (n) "
-                } else {
-                    " Enablement "
-                }
-            }
-            Self::Load => {
-                if show_hotkey {
-                    " Load (o) "
-                } else {
-                    " Load "
-                }
-            }
-            Self::Scope => {
-                if show_hotkey {
-                    " Scope (p) "
-                } else {
-                    " Scope "
-                }
-            }
-        }
-    }
-
-    pub fn unit_value(self, unit: &UnitInfo) -> &str {
-        match self {
-            Self::Active => &unit.active_state,
-            Self::Enablement => &unit.enablement_state,
-            Self::Load => &unit.load_state,
-            Self::Scope => &unit.scope,
-        }
-    }
-
-    pub fn selected_value(self, app: &App) -> Option<&str> {
-        match self {
-            Self::Active => app.unit_list.active_filter.as_deref(),
-            Self::Enablement => app.unit_list.enablement_filter.as_deref(),
-            Self::Load => app.unit_list.load_filter.as_deref(),
-            Self::Scope => app.unit_list.scope_filter.as_deref(),
+            Self::Type => app.unit_list.type_filter.clone(),
+            Self::Scope => app
+                .unit_list
+                .scope_filter
+                .map(|value| value.as_str().to_string()),
+            Self::Active => app
+                .unit_list
+                .active_filter
+                .map(|value| value.as_str().to_string()),
+            Self::Enablement => app
+                .unit_list
+                .enablement_filter
+                .map(|value| value.as_str().to_string()),
+            Self::Load => app
+                .unit_list
+                .load_filter
+                .map(|value| value.as_str().to_string()),
         }
     }
 
     pub fn set_selected_value(self, app: &mut App, value: Option<String>) {
         match self {
-            Self::Active => app.unit_list.active_filter = value,
-            Self::Enablement => app.unit_list.enablement_filter = value,
-            Self::Load => app.unit_list.load_filter = value,
-            Self::Scope => app.unit_list.scope_filter = value,
+            Self::Type => app.unit_list.type_filter = value,
+            Self::Scope => {
+                app.unit_list.scope_filter = value.and_then(|value| value.parse::<UnitScope>().ok())
+            }
+            Self::Active => {
+                app.unit_list.active_filter =
+                    value.and_then(|value| value.parse::<UnitActiveState>().ok())
+            }
+            Self::Enablement => {
+                app.unit_list.enablement_filter =
+                    value.and_then(|value| value.parse::<UnitEnablementState>().ok())
+            }
+            Self::Load => {
+                app.unit_list.load_filter =
+                    value.and_then(|value| value.parse::<UnitLoadState>().ok())
+            }
         }
     }
 
     pub fn preferred_order(self) -> &'static [&'static str] {
         match self {
+            Self::Type => &[
+                "service",
+                "socket",
+                "target",
+                "device",
+                "mount",
+                "automount",
+                "timer",
+                "path",
+                "slice",
+                "scope",
+                "swap",
+            ],
+            Self::Scope => &["global", "session"],
             Self::Active => &[
                 "active",
                 "inactive",
@@ -103,12 +101,30 @@ impl FilterMenu {
                 "unknown",
             ],
             Self::Load => &["loaded", "not-found", "bad-setting", "error", "masked"],
-            Self::Scope => &["global", "session"],
         }
     }
 
     pub fn preferred_hotkeys(self, value: &str) -> Vec<char> {
         match self {
+            Self::Type => match value {
+                "service" => vec!['s'],
+                "socket" => vec!['o'],
+                "target" => vec!['t'],
+                "device" => vec!['d'],
+                "mount" => vec!['m'],
+                "automount" => vec!['u'],
+                "timer" => vec!['i'],
+                "path" => vec!['p'],
+                "slice" => vec!['l'],
+                "scope" => vec!['c'],
+                "swap" => vec!['w'],
+                _ => Vec::new(),
+            },
+            Self::Scope => match value {
+                "global" => vec!['g'],
+                "session" => vec!['s'],
+                _ => Vec::new(),
+            },
             Self::Active => match value {
                 "active" => vec!['t', 'v', 'c'],
                 "inactive" => vec!['i'],
@@ -148,11 +164,6 @@ impl FilterMenu {
                 "unknown" => vec!['u'],
                 _ => Vec::new(),
             },
-            Self::Scope => match value {
-                "global" => vec!['g'],
-                "session" => vec!['s'],
-                _ => Vec::new(),
-            },
         }
     }
 }
@@ -160,6 +171,7 @@ impl FilterMenu {
 impl App {
     pub fn reset_unit_filters(&mut self) {
         self.search.query.clear();
+        self.unit_list.type_filter = None;
         self.unit_list.active_filter = None;
         self.unit_list.enablement_filter = None;
         self.unit_list.load_filter = None;
@@ -212,8 +224,9 @@ impl App {
         self.restore_selection(selected_unit_key.as_ref());
     }
 
-    pub fn filter_summary(&self, menu: FilterMenu) -> &str {
-        menu.selected_value(self).unwrap_or("all")
+    pub fn filter_summary(&self, menu: FilterMenu) -> String {
+        menu.selected_value(self)
+            .unwrap_or_else(|| "all".to_string())
     }
 
     pub fn filter_menu_options(&self, menu: FilterMenu) -> Vec<FilterMenuOption> {
@@ -247,7 +260,7 @@ impl App {
 
             options.push(FilterMenuOption {
                 hotkey,
-                selected: menu.selected_value(self) == Some(label.as_str()),
+                selected: menu.selected_value(self).as_deref() == Some(label.as_str()),
                 value: Some(label.clone()),
                 label,
                 count,
@@ -258,34 +271,38 @@ impl App {
     }
 
     pub fn unit_matches_state_filters(&self, unit: &UnitInfo) -> bool {
-        Self::matches_filter_value(self.unit_list.active_filter.as_deref(), &unit.active_state)
-            && Self::matches_filter_value(
-                self.unit_list.enablement_filter.as_deref(),
-                &unit.enablement_state,
-            )
-            && Self::matches_filter_value(self.unit_list.load_filter.as_deref(), &unit.load_state)
-            && Self::matches_filter_value(self.unit_list.scope_filter.as_deref(), &unit.scope)
+        Self::matches_filter_value(
+            self.unit_list.type_filter.as_deref(),
+            UnitType::from_unit_name(&unit.name).as_str(),
+        ) && (self.unit_list.scope_filter.is_none()
+            || self.unit_list.scope_filter == Some(unit.scope))
+            && (self.unit_list.active_filter.is_none()
+                || self.unit_list.active_filter == Some(unit.active_state))
+            && (self.unit_list.enablement_filter.is_none()
+                || self.unit_list.enablement_filter == Some(unit.enablement_state))
+            && (self.unit_list.load_filter.is_none()
+                || self.unit_list.load_filter == Some(unit.load_state))
     }
 
     pub fn unit_matches_scope_for_menu(&self, unit: &UnitInfo, menu: FilterMenu) -> bool {
         self.unit_matches_search(unit)
-            && (menu == FilterMenu::Active
+            && (menu == FilterMenu::Type
                 || Self::matches_filter_value(
-                    self.unit_list.active_filter.as_deref(),
-                    &unit.active_state,
-                ))
-            && (menu == FilterMenu::Enablement
-                || Self::matches_filter_value(
-                    self.unit_list.enablement_filter.as_deref(),
-                    &unit.enablement_state,
-                ))
-            && (menu == FilterMenu::Load
-                || Self::matches_filter_value(
-                    self.unit_list.load_filter.as_deref(),
-                    &unit.load_state,
+                    self.unit_list.type_filter.as_deref(),
+                    UnitType::from_unit_name(&unit.name).as_str(),
                 ))
             && (menu == FilterMenu::Scope
-                || Self::matches_filter_value(self.unit_list.scope_filter.as_deref(), &unit.scope))
+                || self.unit_list.scope_filter.is_none()
+                || self.unit_list.scope_filter == Some(unit.scope))
+            && (menu == FilterMenu::Active
+                || self.unit_list.active_filter.is_none()
+                || self.unit_list.active_filter == Some(unit.active_state))
+            && (menu == FilterMenu::Enablement
+                || self.unit_list.enablement_filter.is_none()
+                || self.unit_list.enablement_filter == Some(unit.enablement_state))
+            && (menu == FilterMenu::Load
+                || self.unit_list.load_filter.is_none()
+                || self.unit_list.load_filter == Some(unit.load_state))
     }
 
     fn available_filter_values(&self, menu: FilterMenu, scoped: bool) -> BTreeSet<String> {
@@ -293,7 +310,7 @@ impl App {
             .units
             .iter()
             .filter(|unit| !scoped || self.unit_matches_scope_for_menu(unit, menu))
-            .map(|unit| menu.unit_value(unit).to_string())
+            .map(|unit| menu.unit_value(unit))
             .filter(|value| !value.is_empty())
             .collect()
     }
@@ -369,20 +386,21 @@ mod tests {
     fn unit(
         name: &str,
         description: &str,
-        load_state: &str,
-        active_state: &str,
-        enablement_state: &str,
+        load_state: UnitLoadState,
+        active_state: UnitActiveState,
+        enablement_state: UnitEnablementState,
         path: &str,
     ) -> UnitInfo {
         UnitInfo {
             name: name.to_string(),
             description: description.to_string(),
-            scope: "global".to_string(),
-            load_state: load_state.to_string(),
-            active_state: active_state.to_string(),
-            enablement_state: enablement_state.to_string(),
+            scope: UnitScope::Global,
+            load_state,
+            active_state,
+            enablement_state,
             sub_state: active_state.to_string(),
             path: OwnedObjectPath::try_from(path).unwrap(),
+            fragment_path: format!("/etc/systemd/system/{name}"),
         }
     }
 
@@ -394,37 +412,58 @@ mod tests {
             .collect()
     }
 
+    fn unit_with_scope(
+        name: &str,
+        scope: UnitScope,
+        load_state: UnitLoadState,
+        active_state: UnitActiveState,
+        enablement_state: UnitEnablementState,
+        path: &str,
+    ) -> UnitInfo {
+        UnitInfo {
+            name: name.to_string(),
+            description: name.to_string(),
+            scope,
+            load_state,
+            active_state,
+            enablement_state,
+            sub_state: active_state.to_string(),
+            path: OwnedObjectPath::try_from(path).unwrap(),
+            fragment_path: format!("/etc/systemd/system/{name}"),
+        }
+    }
+
     #[test]
     fn update_filter_combines_search_and_state_filters() {
         let mut app = test_app(vec![
             unit(
                 "ssh.service",
                 "Secure Shell",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/ssh",
             ),
             unit(
                 "broken.service",
                 "Broken worker",
-                "loaded",
-                "failed",
-                "static",
+                UnitLoadState::Loaded,
+                UnitActiveState::Failed,
+                UnitEnablementState::Static,
                 "/test/unit/broken",
             ),
             unit(
                 "db.service",
                 "Database",
-                "loaded",
-                "failed",
-                "disabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Failed,
+                UnitEnablementState::Disabled,
                 "/test/unit/db",
             ),
         ]);
 
-        app.unit_list.active_filter = Some("failed".to_string());
-        app.unit_list.enablement_filter = Some("static".to_string());
+        app.unit_list.active_filter = Some(UnitActiveState::Failed);
+        app.unit_list.enablement_filter = Some(UnitEnablementState::Static);
         app.search.query = "broken".to_string();
         app.update_filter();
 
@@ -437,33 +476,33 @@ mod tests {
             unit(
                 "Zebra.service",
                 "Zebra",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/zebra_upper",
             ),
             unit(
                 "zeta.service",
                 "Zeta",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/zeta",
             ),
             unit(
                 "Alpha.service",
                 "Alpha",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/alpha_upper",
             ),
             unit(
                 "beta.service",
                 "Beta",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/beta",
             ),
         ]);
@@ -485,25 +524,25 @@ mod tests {
             unit(
                 "zeta.service",
                 "Zeta",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/zeta",
             ),
             unit(
                 "alpha.service",
                 "Alpha",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/alpha",
             ),
             unit(
                 "beta.service",
                 "Beta",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/beta",
             ),
         ]);
@@ -525,32 +564,32 @@ mod tests {
             unit(
                 "alpha.service",
                 "Alpha",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/alpha",
             ),
             unit(
                 "beta.service",
                 "Beta",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/beta",
             ),
             unit(
                 "gamma.service",
                 "Gamma",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/gamma",
             ),
         ]);
 
         app.unit_list.selected_key = UnitSelectionKey {
             name: "gamma.service".to_string(),
-            scope: "global".to_string(),
+            scope: UnitScope::Global,
             path: "/test/unit/gamma".to_string(),
         };
         app.unit_list.state.select(Some(0));
@@ -567,25 +606,25 @@ mod tests {
             unit(
                 "dup.service",
                 "First",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/dup_a",
             ),
             unit(
                 "dup.service",
                 "Second",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/dup_b",
             ),
             unit(
                 "other.service",
                 "Other",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/other",
             ),
         ]);
@@ -608,25 +647,26 @@ mod tests {
             unit(
                 "zeta.service",
                 "Zeta",
-                "loaded",
-                "failed",
-                "masked",
+                UnitLoadState::Loaded,
+                UnitActiveState::Failed,
+                UnitEnablementState::Masked,
                 "/test/unit/zeta",
             ),
             unit(
                 "alpha.service",
                 "Alpha",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/alpha",
             ),
         ]);
 
-        app.unit_list.active_filter = Some("failed".to_string());
-        app.unit_list.enablement_filter = Some("masked".to_string());
-        app.unit_list.load_filter = Some("loaded".to_string());
-        app.unit_list.scope_filter = Some("global".to_string());
+        app.unit_list.active_filter = Some(UnitActiveState::Failed);
+        app.unit_list.type_filter = Some("service".to_string());
+        app.unit_list.enablement_filter = Some(UnitEnablementState::Masked);
+        app.unit_list.load_filter = Some(UnitLoadState::Loaded);
+        app.unit_list.scope_filter = Some(UnitScope::Global);
         app.search.query = "zeta".to_string();
         app.search.is_active = true;
         app.unit_list.open_filter_menu = Some(FilterMenu::Active);
@@ -634,6 +674,7 @@ mod tests {
         app.reset_unit_filters();
 
         assert!(app.search.query.is_empty());
+        assert!(app.unit_list.type_filter.is_none());
         assert!(app.unit_list.active_filter.is_none());
         assert!(app.unit_list.enablement_filter.is_none());
         assert!(app.unit_list.load_filter.is_none());
@@ -644,22 +685,64 @@ mod tests {
     }
 
     #[test]
+    fn type_filter_menu_includes_common_unit_types_and_filters_units() {
+        let mut app = test_app(vec![
+            unit(
+                "ssh.service",
+                "Secure Shell",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
+                "/test/unit/ssh",
+            ),
+            unit(
+                "ssh.socket",
+                "Secure Shell socket",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
+                "/test/unit/ssh_socket",
+            ),
+        ]);
+
+        let options = app.filter_menu_options(FilterMenu::Type);
+
+        assert_eq!(options[0].label, "all");
+        assert!(
+            options
+                .iter()
+                .any(|option| option.label == "service" && option.hotkey == 's')
+        );
+        assert!(
+            options
+                .iter()
+                .any(|option| option.label == "socket" && option.hotkey == 'o')
+        );
+        assert!(options.iter().any(|option| option.label == "target"));
+
+        app.unit_list.type_filter = Some("socket".to_string());
+        app.update_filter();
+
+        assert_eq!(filtered_names(&app), vec!["ssh.socket"]);
+    }
+
+    #[test]
     fn filter_menu_options_include_all_and_expected_hotkeys() {
         let app = test_app(vec![
             unit(
                 "ssh.service",
                 "Secure Shell",
-                "loaded",
-                "active",
-                "enabled",
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
                 "/test/unit/ssh",
             ),
             unit(
                 "broken.service",
                 "Broken worker",
-                "masked",
-                "inactive",
-                "static",
+                UnitLoadState::Masked,
+                UnitActiveState::Inactive,
+                UnitEnablementState::Static,
                 "/test/unit/broken",
             ),
         ]);
@@ -681,9 +764,9 @@ mod tests {
         let app = test_app(vec![unit(
             "ssh.service",
             "Secure Shell",
-            "loaded",
-            "active",
-            "enabled",
+            UnitLoadState::Loaded,
+            UnitActiveState::Active,
+            UnitEnablementState::Enabled,
             "/test/unit/ssh",
         )]);
 
@@ -706,5 +789,70 @@ mod tests {
                 .iter()
                 .any(|option| option.label == "bad-setting")
         );
+    }
+
+    #[test]
+    fn unit_value_and_scope_filters_treat_type_and_scope_independently() {
+        let mut app = test_app(vec![
+            unit_with_scope(
+                "ssh.service",
+                UnitScope::Global,
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
+                "/test/unit/ssh",
+            ),
+            unit_with_scope(
+                "ssh.socket",
+                UnitScope::Session,
+                UnitLoadState::Loaded,
+                UnitActiveState::Active,
+                UnitEnablementState::Enabled,
+                "/test/unit/ssh_socket",
+            ),
+        ]);
+
+        assert_eq!(
+            FilterMenu::Type.unit_value(&app.unit_list.units[0]),
+            "service"
+        );
+        assert_eq!(
+            FilterMenu::Type.unit_value(&app.unit_list.units[1]),
+            "socket"
+        );
+        assert_eq!(
+            FilterMenu::Scope.unit_value(&app.unit_list.units[1]),
+            "session"
+        );
+
+        app.unit_list.type_filter = Some("service".to_string());
+        app.unit_list.scope_filter = Some(UnitScope::Session);
+        app.update_filter();
+
+        assert!(filtered_names(&app).is_empty());
+    }
+
+    #[test]
+    fn unit_matches_state_filters_rejects_single_mismatch() {
+        let mut app = test_app(vec![unit(
+            "ssh.service",
+            "Secure Shell",
+            UnitLoadState::Loaded,
+            UnitActiveState::Active,
+            UnitEnablementState::Enabled,
+            "/test/unit/ssh",
+        )]);
+
+        let unit = &app.unit_list.units[0];
+
+        app.unit_list.type_filter = Some("socket".to_string());
+        assert!(!app.unit_matches_state_filters(unit));
+
+        app.unit_list.type_filter = Some("service".to_string());
+        app.unit_list.active_filter = Some(UnitActiveState::Failed);
+        assert!(!app.unit_matches_state_filters(unit));
+
+        app.unit_list.active_filter = Some(UnitActiveState::Active);
+        assert!(app.unit_matches_state_filters(unit));
     }
 }

@@ -118,7 +118,7 @@ impl App {
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if let Some(unit) = self.get_selected_unit() {
                     let name = unit.name.clone();
-                    let scope = unit.scope.clone();
+                    let scope = unit.scope.to_string();
                     self.fetch_unit_logs(name, scope).await;
                 }
                 return false;

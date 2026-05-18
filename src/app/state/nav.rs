@@ -1,8 +1,8 @@
 use crate::app::state::{
     context::{App, NavAction, ViewMode},
-    files::FileViewState,
-    logs::LogViewState,
-    units::UnitListState,
+    file::FileViewState,
+    log::LogViewState,
+    unit::UnitListState,
 };
 
 pub trait Navigable {

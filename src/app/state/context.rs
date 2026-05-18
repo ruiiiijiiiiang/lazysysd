@@ -6,11 +6,9 @@ use tokio::sync::mpsc;
 use crate::{
     app::{
         auth::EmbeddedAuthFlow,
-        state::{
-            files::FileViewState, logs::LogViewState, search::SearchState, units::UnitListState,
-        },
+        state::{file::FileViewState, log::LogViewState, search::SearchState, unit::UnitListState},
     },
-    models::{AppInternalEvent, EditReview, PendingAction, PrivilegedAction},
+    models::{AppInternalEvent, EditReview, PendingAction, PrivilegedAction, UnitScope},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,10 +38,11 @@ pub enum NavAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FilterMenu {
+    Type,
+    Scope,
     Active,
     Enablement,
     Load,
-    Scope,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -58,7 +57,7 @@ pub struct FilterMenuOption {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct UnitSelectionKey {
     pub name: String,
-    pub scope: String,
+    pub scope: UnitScope,
     pub path: String,
 }
 
@@ -81,6 +80,7 @@ pub struct App {
     pub matcher: RefCell<Matcher>,
     pub is_loading: bool,
     pub pending_nav_prefix: Option<char>,
+    pub error_message: Option<String>,
 }
 
 impl App {
@@ -101,6 +101,7 @@ impl App {
             matcher: RefCell::new(Matcher::default()),
             is_loading: true,
             pending_nav_prefix: None,
+            error_message: None,
         }
     }
 

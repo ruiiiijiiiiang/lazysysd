@@ -9,7 +9,7 @@ use crate::{
     ui::components::{
         file_view::draw_file_view, header::draw_unit_header, header::render_filter_menu,
         help::draw_help, log_view::draw_log_view, modals::render_auth_modal,
-        modals::render_edit_review_modal, unit_list::draw_unit_list,
+        modals::render_edit_review_modal, modals::render_error_modal, unit_list::draw_unit_list,
     },
 };
 
@@ -68,10 +68,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }),
     );
 
-    if let Some((scope_rect, active_rect, enablement_rect, load_rect)) = filter_anchors
+    if let Some((type_rect, scope_rect, active_rect, enablement_rect, load_rect)) = filter_anchors
         && let Some(menu) = app.unit_list.open_filter_menu
     {
         let anchor = match menu {
+            FilterMenu::Type => type_rect,
             FilterMenu::Scope => scope_rect,
             FilterMenu::Active => active_rect,
             FilterMenu::Enablement => enablement_rect,
@@ -86,5 +87,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if let Some(auth) = &app.embedded_auth {
         render_auth_modal(frame, auth);
+    }
+
+    if let Some(error) = &app.error_message {
+        render_error_modal(frame, error);
     }
 }

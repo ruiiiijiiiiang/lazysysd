@@ -131,13 +131,13 @@ impl App {
                     unit_name,
                     scope,
                     action,
-                } => perform_unit_action(&unit_name, &scope, action).await,
+                } => perform_unit_action(&unit_name, scope, action).await,
                 PrivilegedAction::ApplyEdit {
                     unit_name,
                     scope,
                     mode,
                     content,
-                } => perform_unit_edit(&unit_name, &scope, mode, content).await,
+                } => perform_unit_edit(&unit_name, scope, mode, content).await,
             };
             let _ = tx_clone.send(AppInternalEvent::AuthResult(result)).await;
         });

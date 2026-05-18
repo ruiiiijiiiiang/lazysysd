@@ -9,6 +9,11 @@ use crate::{
 
 impl App {
     pub async fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.error_message.is_some() {
+            self.error_message = None;
+            return Ok(false);
+        }
+
         if self.embedded_auth.is_some() {
             if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
                 return Ok(true);
@@ -94,14 +99,14 @@ impl App {
 
     pub async fn handle_edit_review_key(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
+            KeyCode::Esc | KeyCode::Char('q') => {
                 self.discard_edit_review();
             }
-            KeyCode::Char('a') | KeyCode::Enter => {
+            KeyCode::Enter => {
                 if let Some(review) = self.pending_edit_review.as_ref() {
                     self.start_embedded_auth(PrivilegedAction::ApplyEdit {
                         unit_name: review.unit_name.clone(),
-                        scope: review.scope.clone(),
+                        scope: review.scope,
                         mode: review.mode,
                         content: review.edited_content.clone(),
                     })

@@ -116,12 +116,15 @@ fn format_unit_row(
         ]);
         lines.push(clip_line(detail, content_width));
 
-        let actions_col0 = vec![
+        let mut actions_col0 = vec![
             Span::styled("l/Enter", keybind_style()),
             Span::raw(" view log  "),
-            Span::styled("f", keybind_style()),
-            Span::raw(" view unit file"),
         ];
+
+        if !unit.fragment_path.is_empty() {
+            actions_col0.push(Span::styled("f", keybind_style()));
+            actions_col0.push(Span::raw(" view unit file"));
+        }
 
         let actions_col2 = vec![
             Span::styled("s", keybind_style()),

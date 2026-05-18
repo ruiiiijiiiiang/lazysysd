@@ -22,8 +22,13 @@ impl App {
                 }
                 KeyCode::Char('y') | KeyCode::Enter => {
                     if let Some(text) = self.selected_log_lines_text() {
+                        let count = text.lines().count();
                         let cloned = text.clone();
                         spawn_blocking(move || copy_to_clipboard(&cloned));
+                        self.notify(
+                            format!("{} lines copied to clipboard", count),
+                            crate::models::NotificationType::Success,
+                        );
                     }
                     self.log_view.visual_line_select = false;
                     self.log_view.line_marks.clear();
@@ -61,8 +66,13 @@ impl App {
                             .map(|s| s.as_str())
                             .collect::<Vec<_>>()
                             .join("\n");
+                        let count = text.lines().count();
                         let cloned = text.clone();
                         spawn_blocking(move || copy_to_clipboard(&cloned));
+                        self.notify(
+                            format!("{} lines copied to clipboard", count),
+                            crate::models::NotificationType::Success,
+                        );
                     }
                     self.clear_log_visual_modes();
                 }
@@ -119,7 +129,7 @@ impl App {
                 if let Some(unit) = self.get_selected_unit() {
                     let name = unit.name.clone();
                     let scope = unit.scope.to_string();
-                    self.fetch_unit_logs(name, scope).await;
+                    self.fetch_unit_logs(name, scope, true).await;
                 }
                 return false;
             }

@@ -27,7 +27,6 @@ impl App {
                     return true;
                 }
             }
-            KeyCode::Char('e') | KeyCode::Char('E') => {}
             KeyCode::Char('/') if !self.file_view.content.is_empty() => {
                 self.start_search();
             }

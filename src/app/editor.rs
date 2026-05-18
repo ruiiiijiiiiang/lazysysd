@@ -20,7 +20,7 @@ pub fn resolve_editor() -> Result<String> {
         .or_else(|| env::var("EDITOR").ok().filter(|e| !e.is_empty()))
         .map(|e| vec![e])
         .unwrap_or_else(|| {
-            ["nano", "vim", "vi", "emacs"]
+            ["nano", "vim", "emacs", "vi"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect()
@@ -33,7 +33,7 @@ pub fn resolve_editor() -> Result<String> {
     }
 
     Err(Error::other(
-        "No text editor found. Set $VISUAL or $EDITOR, or install one of: nano, vim, vi, emacs, pico",
+        "No text editor found. Set $VISUAL or $EDITOR, or install one of: nano, vim, emacs, vi",
     ))
 }
 
@@ -80,7 +80,7 @@ pub fn run_editor_request(
 
 pub fn run_editor_text(filename: String, content: String) -> Result<String> {
     let editor = resolve_editor()?;
-    let temp_path = env::temp_dir().join(format!("lazysysd-{filename}-{}.log", unique_suffix()));
+    let temp_path = env::temp_dir().join(format!("sdctl-{filename}-{}.log", unique_suffix()));
     fs::write(&temp_path, strip_ansi_content(&content))
         .map_err(|e| Error::other(format!("Failed to prepare log draft: {e}")))?;
 
@@ -117,9 +117,7 @@ fn create_temp_edit_path(unit_name: &str, mode: UnitEditMode) -> PathBuf {
         .unwrap_or_default()
         .as_nanos();
 
-    env::temp_dir().join(format!(
-        "lazysysd-{sanitized_name}-{mode_label}-{unique}.conf"
-    ))
+    env::temp_dir().join(format!("sdctl-{sanitized_name}-{mode_label}-{unique}.conf"))
 }
 
 fn unique_suffix() -> u128 {

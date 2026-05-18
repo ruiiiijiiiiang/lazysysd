@@ -57,6 +57,22 @@ pub enum UnitAction {
     ResetFailed,
 }
 
+impl UnitAction {
+    pub fn past_tense(self) -> &'static str {
+        match self {
+            Self::Start => "Started",
+            Self::Stop => "Stopped",
+            Self::Restart => "Restarted",
+            Self::Reload => "Reloaded",
+            Self::Enable => "Enabled",
+            Self::Disable => "Disabled",
+            Self::Mask => "Masked",
+            Self::Unmask => "Unmasked",
+            Self::ResetFailed => "Reset failed state for",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PrivilegedAction {
     UnitCommand {
@@ -81,10 +97,23 @@ pub enum AppInternalEvent {
     PtyOutput(String),
     PtyClosed,
     AuthResult(AttemptResult),
-    UnitsLoaded(Vec<UnitInfo>),
-    LogsLoaded(Vec<String>),
-    FileLoaded(String, String), // content, path
+    UnitsLoaded(Vec<UnitInfo>, bool),
+    LogsLoaded(Vec<String>, bool),
+    FileLoaded(String, String),
     Error(String),
+    ClearNotification,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NotificationType {
+    Success,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Notification {
+    pub message: String,
+    pub kind: NotificationType,
 }
 
 pub enum PendingAction {
@@ -123,7 +152,7 @@ pub enum UnitType {
 }
 
 impl UnitType {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Unknown => "unknown",
             Self::Service => "service",
@@ -193,7 +222,7 @@ pub enum UnitScope {
 }
 
 impl UnitScope {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Global => "global",
             Self::Session => "session",
@@ -225,7 +254,7 @@ pub enum UnitLoadState {
 }
 
 impl UnitLoadState {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Loaded => "loaded",
             Self::NotFound => "not-found",
@@ -265,7 +294,7 @@ pub enum UnitActiveState {
 }
 
 impl UnitActiveState {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Active => "active",
             Self::Inactive => "inactive",
@@ -315,7 +344,7 @@ pub enum UnitEnablementState {
 }
 
 impl UnitEnablementState {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Enabled => "enabled",
             Self::EnabledRuntime => "enabled-runtime",

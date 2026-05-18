@@ -44,7 +44,7 @@ pub fn draw_log_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 let marker = if app.log_view.visual_line_select {
                     match line_range {
                         Some((start, end)) if start == end && i == start => {
-                            Span::styled("┣ ", Style::default().fg(Color::Green))
+                            Span::styled("━ ", Style::default().fg(Color::Green))
                         }
                         Some((start, _)) if i == start => {
                             Span::styled("┏ ", Style::default().fg(Color::Green))

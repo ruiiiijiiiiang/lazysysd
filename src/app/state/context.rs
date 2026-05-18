@@ -8,7 +8,10 @@ use crate::{
         auth::EmbeddedAuthFlow,
         state::{file::FileViewState, log::LogViewState, search::SearchState, unit::UnitListState},
     },
-    models::{AppInternalEvent, EditReview, PendingAction, PrivilegedAction, UnitScope},
+    models::{
+        AppInternalEvent, EditReview, Notification, NotificationType, PendingAction,
+        PrivilegedAction, UnitScope,
+    },
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,6 +84,7 @@ pub struct App {
     pub is_loading: bool,
     pub pending_nav_prefix: Option<char>,
     pub error_message: Option<String>,
+    pub notification: Option<Notification>,
 }
 
 impl App {
@@ -102,12 +106,23 @@ impl App {
             is_loading: true,
             pending_nav_prefix: None,
             error_message: None,
+            notification: None,
         }
     }
 
     pub async fn new(internal_tx: mpsc::Sender<AppInternalEvent>) -> Self {
         let mut app = Self::blank(internal_tx);
-        app.refresh_units().await;
+        app.refresh_units(false).await;
         app
+    }
+
+    pub fn notify(&mut self, message: String, kind: NotificationType) {
+        self.notification = Some(Notification { message, kind });
+
+        let tx = self.internal_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let _ = tx.send(AppInternalEvent::ClearNotification).await;
+        });
     }
 }

@@ -47,6 +47,11 @@ impl App {
         let matches = self.file_search_matches();
         if matches.is_empty() {
             self.file_view.search_match = None;
+            let query = self.search.query.clone();
+            self.notify(
+                format!("No matches found for '{}'", query),
+                crate::models::NotificationType::Error,
+            );
             return;
         }
 

@@ -1,23 +1,33 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
-    style::Style,
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
 use crate::{
     app::state::context::{App, ViewMode},
+    models::NotificationType,
     ui::utils::keybind_style,
 };
 
 pub fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(if app.notification.is_some() { 3 } else { 0 }),
+    ])
+    .split(area);
+
+    let help_area = chunks[0];
+    let notify_area = chunks[1];
+
     let columns = Layout::horizontal([
         Constraint::Percentage(33),
         Constraint::Percentage(34),
         Constraint::Percentage(33),
     ])
-    .split(area.inner(ratatui::layout::Margin {
+    .split(help_area.inner(ratatui::layout::Margin {
         vertical: 0,
         horizontal: 1,
     }));
@@ -40,6 +50,30 @@ pub fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(external).wrap(Wrap { trim: true }),
         columns[2],
     );
+
+    if let Some(notification) = &app.notification {
+        let notify_cols = Layout::horizontal([
+            Constraint::Percentage(25),
+            Constraint::Percentage(50),
+            Constraint::Percentage(25),
+        ])
+        .split(notify_area);
+
+        let color = match notification.kind {
+            NotificationType::Success => Color::Green,
+            NotificationType::Error => Color::Red,
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(color));
+
+        let paragraph = Paragraph::new(notification.message.clone())
+            .block(block)
+            .alignment(Alignment::Center);
+
+        frame.render_widget(paragraph, notify_cols[1]);
+    }
 }
 
 fn help_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<Line<'static>>) {
@@ -99,7 +133,7 @@ fn log_view_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<L
     if app.log_view.visual_line_select || app.log_view.visual_select {
         return (
             nav_shortcuts(),
-            vec![shortcut("Space", "Mark"), shortcut("y/Enter", "Yank")],
+            vec![shortcut("Space", "Mark"), shortcut("y/Enter", "Copy")],
             vec![shortcut("Esc", "Cancel")],
         );
     }

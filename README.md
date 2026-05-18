@@ -1,22 +1,23 @@
-# lazysysd
+# sdctl
 
-`lazysysd` is a security-focused `ratatui` TUI application for managing `systemd` services on Linux. It prioritizes the principle of least privilege, allowing users to browse services in an unprivileged state and providing an embedded authentication flow for privileged operations.
+`sdctl` is a security-focused `ratatui` TUI application for managing `systemd` services on Linux. It prioritizes the principle of least privilege, allowing users to browse services in an unprivileged state and providing an embedded authentication flow for privileged operations.
 
 ## Features
 
-- **Unified Unit Management:** Seamlessly browse and control both **System (global)** and **User (session)** units from a single interface.
-- **Enhanced Filtering:** Powerful multi-category filters (Type, Scope, Active, Enablement, Load).
-- **Service Dashboard:** Efficiently list and discover units with case-insensitive sorting and high-performance client-side fuzzy search.
-- **Log Viewer:** Integrated `journalctl` browser with automatic syntax highlighting provided by [tailspin](https://github.com/bensadeh/tailspin), and both line-wise and multi-line visual select modes.
-- **Unit File Viewer:** View unit configurations directly with syntax highlighting. Supports creating **drop-in overrides** or editing the full unit file via your `$EDITOR`.
-- **Vim-style Navigation:** Global keyboard shortcuts for intuitive scrolling, paging, and search cursor movement.
+- **Security First**: All privileged actions are authenticated using `polkit`. Never requires `sudo`.
+- **Unified Unit Management**: Seamlessly browse and control both **System (global)** and **User (session)** units from a single interface.
+- **Enhanced Filtering**: Powerful multi-category filters (Type, Scope, Active, Enablement, Load).
+- **Service Dashboard**: Efficiently list and discover units with case-insensitive sorting and high-performance client-side fuzzy search.
+- **Log Viewer**: Integrated `journalctl` browser with automatic syntax highlighting provided by [tailspin](https://github.com/bensadeh/tailspin), and both line-wise and multi-line visual select modes.
+- **Unit File Viewer**: View unit configurations directly with syntax highlighting. Supports creating **drop-in overrides** or editing the full unit file via your `$EDITOR`.
+- **Vim-style Navigation**: Global keyboard shortcuts for intuitive scrolling, paging, and search cursor movement.
 
 <details>
   <summary>Why another TUI for managing systemd services?</summary>
 
 This tool is not the first of its kind. I have been using [`systemctl-tui`](https://github.com/rgwood/systemctl-tui) and [`systemd-manager-tui`](https://github.com/matheus-git/systemd-manager-tui) extensively to the point that I forgot how to use `systemctl` from the command line. However those tools share one major limitation: they require `sudo` for privileged operations. In today’s supply-chain threat landscape, that is a serious risk because a TUI app depends on many components, and any compromised dependency could become a full-privilege attack vector.
 
-This is why I built `lazysysd` with a completely different security model: the app itself should never be run with `sudo`, and no action ever asks for blanket root access. When you start, stop, enable, disable, mask, unmask, reload, or edit a unit, the app opens an embedded `polkit`/`pkttyagent` flow that authenticates only the specific `systemctl` action you are trying to perform, using whatever mechanism is available on the system, such as password, fingerprint reader, or smart card. That keeps the privilege boundary explicit and tied to a single operation instead of the whole process.
+This is why I built `sdctl` with a completely different security model: the app itself should never be run with `sudo`, and no action ever asks for blanket root access. When you perform any action that requires escalated privileges, the app opens an embedded `polkit` flow that authenticates only the specific `systemctl` action you are trying to perform, using whatever mechanism is available on the system, such as password, fingerprint reader, or smart card. That keeps the privilege boundary explicit and tied to a single operation instead of the whole process.
 
 </details>
 
@@ -83,7 +84,7 @@ This is why I built `lazysysd` with a completely different security model: the a
 
 ```bash
 nix build
-./result/bin/lazysysd
+./result/bin/sdctl
 ```
 
 ## Contribution

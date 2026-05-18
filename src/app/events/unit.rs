@@ -20,6 +20,10 @@ impl App {
                     .contains(crossterm::event::KeyModifiers::CONTROL) =>
             {
                 self.reset_unit_filters();
+                self.notify(
+                    "All filters reset".to_string(),
+                    crate::models::NotificationType::Success,
+                );
                 return false;
             }
             KeyCode::Char('/') => {
@@ -45,6 +49,10 @@ impl App {
             KeyCode::Char('Y') => {
                 if let Some(path) = selected_unit_file_path(self) {
                     spawn_blocking(move || copy_to_clipboard(&path));
+                    self.notify(
+                        "Path copied to clipboard".to_string(),
+                        crate::models::NotificationType::Success,
+                    );
                 }
                 return false;
             }
@@ -57,7 +65,11 @@ impl App {
                 return false;
             }
             KeyCode::Char('f') => {
-                self.enter_file_view().await;
+                if let Some(unit) = self.get_selected_unit()
+                    && !unit.fragment_path.is_empty()
+                {
+                    self.enter_file_view().await;
+                }
                 return false;
             }
             _ => {

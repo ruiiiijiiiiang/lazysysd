@@ -5,6 +5,53 @@ use crate::{
     models::{UnitActiveState, UnitEnablementState, UnitInfo, UnitLoadState, UnitScope, UnitType},
 };
 
+const TYPE_ORDER: &[&str] = &[
+    UnitType::Service.as_str(),
+    UnitType::Socket.as_str(),
+    UnitType::Target.as_str(),
+    UnitType::Device.as_str(),
+    UnitType::Mount.as_str(),
+    UnitType::Automount.as_str(),
+    UnitType::Timer.as_str(),
+    UnitType::Path.as_str(),
+    UnitType::Slice.as_str(),
+    UnitType::Scope.as_str(),
+    UnitType::Swap.as_str(),
+];
+const SCOPE_ORDER: &[&str] = &[UnitScope::Global.as_str(), UnitScope::Session.as_str()];
+const ACTIVE_ORDER: &[&str] = &[
+    UnitActiveState::Active.as_str(),
+    UnitActiveState::Inactive.as_str(),
+    UnitActiveState::Failed.as_str(),
+    UnitActiveState::Activating.as_str(),
+    UnitActiveState::Deactivating.as_str(),
+    UnitActiveState::Maintenance.as_str(),
+    UnitActiveState::Reloading.as_str(),
+];
+const ENABLEMENT_ORDER: &[&str] = &[
+    UnitEnablementState::Enabled.as_str(),
+    UnitEnablementState::EnabledRuntime.as_str(),
+    UnitEnablementState::Linked.as_str(),
+    UnitEnablementState::LinkedRuntime.as_str(),
+    UnitEnablementState::Masked.as_str(),
+    UnitEnablementState::MaskedRuntime.as_str(),
+    UnitEnablementState::Static.as_str(),
+    UnitEnablementState::Disabled.as_str(),
+    UnitEnablementState::Invalid.as_str(),
+    UnitEnablementState::Indirect.as_str(),
+    UnitEnablementState::Alias.as_str(),
+    UnitEnablementState::Generated.as_str(),
+    UnitEnablementState::Transient.as_str(),
+    UnitEnablementState::Unknown.as_str(),
+];
+const LOAD_ORDER: &[&str] = &[
+    UnitLoadState::Loaded.as_str(),
+    UnitLoadState::NotFound.as_str(),
+    UnitLoadState::BadSetting.as_str(),
+    UnitLoadState::Error.as_str(),
+    UnitLoadState::Masked.as_str(),
+];
+
 impl FilterMenu {
     pub fn unit_value(self, unit: &UnitInfo) -> String {
         match self {
@@ -61,109 +108,96 @@ impl FilterMenu {
 
     pub fn preferred_order(self) -> &'static [&'static str] {
         match self {
-            Self::Type => &[
-                "service",
-                "socket",
-                "target",
-                "device",
-                "mount",
-                "automount",
-                "timer",
-                "path",
-                "slice",
-                "scope",
-                "swap",
-            ],
-            Self::Scope => &["global", "session"],
-            Self::Active => &[
-                "active",
-                "inactive",
-                "failed",
-                "activating",
-                "deactivating",
-                "maintenance",
-                "reloading",
-            ],
-            Self::Enablement => &[
-                "enabled",
-                "enabled-runtime",
-                "linked",
-                "linked-runtime",
-                "masked",
-                "masked-runtime",
-                "static",
-                "disabled",
-                "invalid",
-                "indirect",
-                "alias",
-                "generated",
-                "transient",
-                "unknown",
-            ],
-            Self::Load => &["loaded", "not-found", "bad-setting", "error", "masked"],
+            Self::Type => TYPE_ORDER,
+            Self::Scope => SCOPE_ORDER,
+            Self::Active => ACTIVE_ORDER,
+            Self::Enablement => ENABLEMENT_ORDER,
+            Self::Load => LOAD_ORDER,
         }
     }
 
-    pub fn preferred_hotkeys(self, value: &str) -> Vec<char> {
+    pub fn preferred_hotkeys(self, value: &str) -> Option<char> {
         match self {
-            Self::Type => match value {
-                "service" => vec!['s'],
-                "socket" => vec!['o'],
-                "target" => vec!['t'],
-                "device" => vec!['d'],
-                "mount" => vec!['m'],
-                "automount" => vec!['u'],
-                "timer" => vec!['i'],
-                "path" => vec!['p'],
-                "slice" => vec!['l'],
-                "scope" => vec!['c'],
-                "swap" => vec!['w'],
-                _ => Vec::new(),
-            },
-            Self::Scope => match value {
-                "global" => vec!['g'],
-                "session" => vec!['s'],
-                _ => Vec::new(),
-            },
-            Self::Active => match value {
-                "active" => vec!['t', 'v', 'c'],
-                "inactive" => vec!['i'],
-                "failed" => vec!['f'],
-                "activating" => vec!['g'],
-                "deactivating" => vec!['d'],
-                "maintenance" => vec!['m'],
-                "reloading" => vec!['r'],
-                "unknown" => vec!['u'],
-                _ => Vec::new(),
-            },
-            Self::Enablement => match value {
-                "enabled" => vec!['e'],
-                "disabled" => vec!['d'],
-                "static" => vec!['s'],
-                "masked" => vec!['m'],
-                "indirect" => vec!['i'],
-                "alias" => vec!['l'],
-                "generated" => vec!['g'],
-                "linked" => vec!['k'],
-                "enabled-runtime" => vec!['r'],
-                "disabled-runtime" => vec!['u'],
-                "masked-runtime" => vec!['x'],
-                "linked-runtime" => vec!['y'],
-                "transient" => vec!['t'],
-                "unknown" => vec!['w'],
-                _ => Vec::new(),
-            },
-            Self::Load => match value {
-                "loaded" => vec!['l'],
-                "not-found" => vec!['n'],
-                "masked" => vec!['m'],
-                "error" => vec!['e'],
-                "bad-setting" => vec!['b'],
-                "merged" => vec!['g'],
-                "stub" => vec!['s'],
-                "unknown" => vec!['u'],
-                _ => Vec::new(),
-            },
+            Self::Type => {
+                let Ok(v) = value.parse::<UnitType>() else {
+                    return None;
+                };
+                match v {
+                    UnitType::Service => Some('s'),
+                    UnitType::Socket => Some('o'),
+                    UnitType::Target => Some('t'),
+                    UnitType::Device => Some('d'),
+                    UnitType::Mount => Some('m'),
+                    UnitType::Automount => Some('u'),
+                    UnitType::Timer => Some('i'),
+                    UnitType::Path => Some('p'),
+                    UnitType::Slice => Some('l'),
+                    UnitType::Scope => Some('c'),
+                    UnitType::Swap => Some('w'),
+                    UnitType::Unknown => None,
+                }
+            }
+            Self::Scope => {
+                let Ok(v) = value.parse::<UnitScope>() else {
+                    return None;
+                };
+                match v {
+                    UnitScope::Global => Some('g'),
+                    UnitScope::Session => Some('s'),
+                }
+            }
+            Self::Active => {
+                let Ok(v) = value.parse::<UnitActiveState>() else {
+                    return None;
+                };
+                match v {
+                    UnitActiveState::Active => Some('c'),
+                    UnitActiveState::Inactive => Some('i'),
+                    UnitActiveState::Failed => Some('f'),
+                    UnitActiveState::Activating => Some('g'),
+                    UnitActiveState::Deactivating => Some('d'),
+                    UnitActiveState::Maintenance => Some('m'),
+                    UnitActiveState::Reloading => Some('r'),
+                    UnitActiveState::Unknown => Some('u'),
+                }
+            }
+            Self::Enablement => {
+                let Ok(v) = value.parse::<UnitEnablementState>() else {
+                    return None;
+                };
+                match v {
+                    UnitEnablementState::Enabled => Some('e'),
+                    UnitEnablementState::Disabled => Some('d'),
+                    UnitEnablementState::Static => Some('s'),
+                    UnitEnablementState::Masked => Some('m'),
+                    UnitEnablementState::Indirect => Some('i'),
+                    UnitEnablementState::Alias => Some('l'),
+                    UnitEnablementState::Generated => Some('g'),
+                    UnitEnablementState::Linked => Some('k'),
+                    UnitEnablementState::EnabledRuntime => Some('r'),
+                    UnitEnablementState::DisabledRuntime => Some('u'),
+                    UnitEnablementState::MaskedRuntime => Some('x'),
+                    UnitEnablementState::LinkedRuntime => Some('y'),
+                    UnitEnablementState::Transient => Some('t'),
+                    UnitEnablementState::Unknown => Some('w'),
+                    UnitEnablementState::Invalid => Some('v'),
+                }
+            }
+            Self::Load => {
+                let Ok(v) = value.parse::<UnitLoadState>() else {
+                    return None;
+                };
+                match v {
+                    UnitLoadState::Loaded => Some('l'),
+                    UnitLoadState::NotFound => Some('n'),
+                    UnitLoadState::Masked => Some('m'),
+                    UnitLoadState::Error => Some('e'),
+                    UnitLoadState::BadSetting => Some('b'),
+                    UnitLoadState::Merged => Some('g'),
+                    UnitLoadState::Stub => Some('s'),
+                    UnitLoadState::Unknown => Some('u'),
+                }
+            }
         }
     }
 }

@@ -70,7 +70,7 @@ pub async fn run_app() -> Result<()> {
             }
 
             _ = tick.tick() => {
-                app.refresh_units().await;
+                app.refresh_units(false).await;
             }
         }
     }

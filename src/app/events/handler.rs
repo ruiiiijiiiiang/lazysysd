@@ -22,6 +22,10 @@ impl App {
                 || (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c'))
             {
                 self.cancel_embedded_auth("authentication cancelled");
+                self.notify(
+                    "Authentication cancelled".to_string(),
+                    crate::models::NotificationType::Error,
+                );
                 return Ok(false);
             }
             if let Some(flow) = self.embedded_auth.as_mut() {

@@ -12,13 +12,13 @@ use crate::{
 };
 
 impl App {
-    pub async fn refresh_units(&mut self) {
+    pub async fn refresh_units(&mut self, is_manual: bool) {
         self.is_loading = true;
         let tx = self.internal_tx.clone();
         spawn(async move {
             match fetch_all_units().await {
                 Ok(units) => {
-                    let _ = tx.send(AppInternalEvent::UnitsLoaded(units)).await;
+                    let _ = tx.send(AppInternalEvent::UnitsLoaded(units, is_manual)).await;
                 }
                 Err(e) => {
                     let _ = tx
@@ -31,14 +31,14 @@ impl App {
         });
     }
 
-    pub async fn fetch_unit_logs(&mut self, unit_name: String, scope: String) {
+    pub async fn fetch_unit_logs(&mut self, unit_name: String, scope: String, is_manual: bool) {
         self.is_loading = true;
         let tx = self.internal_tx.clone();
         spawn(async move {
             let manager = JournalManager::new();
             match manager.fetch_logs(&unit_name, &scope, 100).await {
                 Ok(logs) => {
-                    let _ = tx.send(AppInternalEvent::LogsLoaded(logs)).await;
+                    let _ = tx.send(AppInternalEvent::LogsLoaded(logs, is_manual)).await;
                 }
                 Err(e) => {
                     let _ = tx

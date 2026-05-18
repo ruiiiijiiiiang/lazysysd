@@ -97,7 +97,7 @@ impl App {
             self.log_view.logs.clear();
             self.log_view.state.select(None);
             self.log_view.clear_visual_modes();
-            self.fetch_unit_logs(name, scope).await;
+            self.fetch_unit_logs(name, scope, false).await;
         }
     }
 
@@ -122,6 +122,11 @@ impl App {
     pub fn cycle_log_search_match(&mut self, forward: bool) {
         let matches = self.log_search_matches();
         if matches.is_empty() {
+            let query = self.search.query.clone();
+            self.notify(
+                format!("No matches found for '{}'", query),
+                crate::models::NotificationType::Error,
+            );
             return;
         }
 

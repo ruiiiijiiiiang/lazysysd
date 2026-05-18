@@ -7,13 +7,17 @@ use std::{
     env,
     ffi::OsStr,
     fs,
-    io::{Error, Result},
+    io::{Error, Result, stdout},
+    panic,
     path::PathBuf,
-    process::{Command, ExitCode},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crossterm::event::{Event, EventStream, KeyEventKind};
+use crossterm::{
+    event::{Event, EventStream, KeyEventKind},
+    terminal::{LeaveAlternateScreen, disable_raw_mode},
+};
 use futures::{FutureExt, StreamExt};
 use tokio::{
     sync::mpsc,
@@ -27,14 +31,18 @@ use crate::{
 };
 
 #[tokio::main]
-async fn main() -> ExitCode {
-    match run_app().await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("{err}");
-            ExitCode::FAILURE
-        }
-    }
+async fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
+
+    let next = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = crossterm::execute!(stdout(), LeaveAlternateScreen);
+        next(info);
+    }));
+
+    run_app().await?;
+    Ok(())
 }
 
 fn resolve_editor() -> Result<String> {

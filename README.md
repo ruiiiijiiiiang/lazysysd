@@ -5,7 +5,7 @@
 ## Features
 
 - **Unified Unit Management:** Seamlessly browse and control both **System (global)** and **User (session)** units from a single interface.
-- **Enhanced Filtering:** Powerful multi-category filters (Scope, Active, Enablement, Load).
+- **Enhanced Filtering:** Powerful multi-category filters (Type, Scope, Active, Enablement, Load).
 - **Service Dashboard:** Efficiently list and discover units with case-insensitive sorting and high-performance client-side fuzzy search.
 - **Log Viewer:** Integrated `journalctl` browser with automatic syntax highlighting provided by [tailspin](https://github.com/bensadeh/tailspin), and both line-wise and multi-line visual select modes.
 - **Unit File Viewer:** View unit configurations directly with syntax highlighting. Supports creating **drop-in overrides** or editing the full unit file via your `$EDITOR`.
@@ -34,7 +34,7 @@ This is why I built `lazysysd` with a completely different security model: the a
 ### Unit List
 
 - `/`: Enter fuzzy search mode
-- `p` / `a` / `n` / `o`: Open Scope, Active, Enablement, or Load filter menus
+- `y` / `p` / `a` / `n` / `o`: Open Type, Scope, Active, Enablement, or Load filter menus
 - `Ctrl+r`: Reset all filters
 - `s` / `t` / `r` / `R`: Start, stop, restart, or reload the selected unit
 - `e` / `d` / `m` / `u`: Enable, disable, mask, or unmask the selected unit

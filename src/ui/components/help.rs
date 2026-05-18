@@ -80,7 +80,7 @@ fn unit_list_columns(app: &App) -> (Vec<Line<'static>>, Vec<Line<'static>>, Vec<
         nav_shortcuts(),
         vec![
             shortcut("/", "Search"),
-            shortcut("a/n/o/p/y", "Toggle filters"),
+            shortcut("y/p/a/n/o", "Toggle filters"),
             shortcut("Ctrl+r", "Reset filters"),
         ],
         vec![shortcut("Y", "Copy unit file path"), shortcut("q", "Quit")],

@@ -2,7 +2,7 @@
 
 `sdctl` is a security-focused `ratatui` TUI application for managing `systemd` services on Linux. It prioritizes the principle of least privilege, allowing users to browse services in an unprivileged state and providing an embedded authentication flow for privileged operations.
 
-[!screenshot](https://github.com/user-attachments/assets/16267839-1349-4ea4-a00f-89d763cd8d5a)
+![screenshot](https://github.com/user-attachments/assets/16267839-1349-4ea4-a00f-89d763cd8d5a)
 
 ## Features
 
@@ -17,28 +17,28 @@
 <details>
   <summary>Quick filter toggle</summary>
 
-[!screenshot](https://github.com/user-attachments/assets/77eb343d-722a-40a9-b4b8-4b430f928759)
+![screenshot](https://github.com/user-attachments/assets/77eb343d-722a-40a9-b4b8-4b430f928759)
 
 </details>
 
 <details>
   <summary>Unit file view</summary>
 
-[!screenshot](https://github.com/user-attachments/assets/8b7bebb8-4204-493b-8c38-89ad729bcf74)
+![screenshot](https://github.com/user-attachments/assets/8b7bebb8-4204-493b-8c38-89ad729bcf74)
 
 </details>
 
 <details>
   <summary>Line block select mode in log view</summary>
 
-[!screenshot](https://github.com/user-attachments/assets/06b91e6f-9d64-4b91-a46b-dc6f1c52d941)
+![screenshot](https://github.com/user-attachments/assets/06b91e6f-9d64-4b91-a46b-dc6f1c52d941)
 
 </details>
 
 <details>
   <summary>Line select mode in log view</summary>
 
-[!screenshot](https://github.com/user-attachments/assets/f9ac57b0-3610-4c6d-820f-dda1671288db)
+![screenshot](https://github.com/user-attachments/assets/f9ac57b0-3610-4c6d-820f-dda1671288db)
 
 </details>
 
